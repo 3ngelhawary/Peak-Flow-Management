@@ -188,7 +188,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 }
 .param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; align-items: end; }
 .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.catchment-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 18px; }
+/* FIX6: auto-fit wraps cleanly at any viewport — no more orphaned Safety Factor */
+.catchment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 18px; }
 .slider-row { display: grid; grid-template-columns: 1fr 150px; gap: 12px; align-items: center; margin-top: 8px; }
 .value-pill {
   margin-top: 0 !important;
@@ -219,10 +220,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 .metric-label { font-size: 11px; font-weight: 900; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
 .metric-value { font-size: 30px; font-weight: 950; color: var(--navy); line-height: 1; }
 .metric-unit { font-size: 12px; color: #64748b; font-weight: 800; }
-.fill-bar-bg { height: 7px; background: #dbeafe; border-radius: 999px; margin-top: 12px; overflow: hidden; }
+
+/* FIX10: fill bar now lives in its own row below dashboard cards */
+.fill-row { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; }
+.fill-row-label { font-size: 11px; font-weight: 900; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+.fill-row-pct { font-size: 13px; font-weight: 900; color: var(--navy); min-width: 40px; text-align: right; }
+.fill-bar-bg { height: 7px; background: #dbeafe; border-radius: 999px; overflow: hidden; }
 .fill-bar { height: 100%; width: 0%; background: var(--blue); border-radius: 999px; transition: width 0.3s, background 0.3s; }
 
-.result-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+/* FIX4/5: result-strip expanded to 7 cards, auto-fit to wrap cleanly */
+.result-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 16px 0; }
 .result-strip div {
   background: #071b33;
   color: white;
@@ -271,13 +278,12 @@ footer strong { color: #8b0000; font-weight: 950; background: white; border-radi
 
 @media (max-width: 980px) {
   .hero-inner, .method-controls, .sim-viz { grid-template-columns: 1fr; }
-  .catchment-grid, .sim-dashboard { grid-template-columns: repeat(2, 1fr); }
-  .result-strip { grid-template-columns: repeat(3, 1fr); }
+  .sim-dashboard { grid-template-columns: repeat(2, 1fr); }
   .hero-panel { display: none; }
 }
 @media (max-width: 640px) {
   .card { padding: 20px; }
-  .catchment-grid, .sim-dashboard, .result-strip, .two-col { grid-template-columns: repeat(2, 1fr); }
+  .sim-dashboard, .two-col { grid-template-columns: repeat(2, 1fr); }
   .slider-row { grid-template-columns: 1fr; }
   .chart-wrap { height: 300px; }
   .speed-group { margin-left: 0; }

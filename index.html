@@ -26,10 +26,13 @@
       <span class="hero-kicker">Synthetic Storm Design Tool</span>
       <h1>Storm Retention Tank Simulator</h1>
       <p>Dynamic storage simulation using either Rational Method peak flow or SCS Curve Number runoff from a Type II 24-hour storm.</p>
+      <!-- FIX7: hero badges updated to reflect all current features -->
       <div class="hero-badges" aria-label="Main design features">
         <span>Rational / SCS</span>
         <span>Factored Storage</span>
-        <span>Emptying Time</span>
+        <span>Direct Inflow</span>
+        <span>Overflow Tracking</span>
+        <span>Peak Flow &amp; Time</span>
       </div>
     </div>
     <div class="hero-panel" aria-hidden="true">
@@ -128,6 +131,7 @@
       </div>
     </div>
 
+    <!-- FIX6: catchment-grid uses auto-fit so it wraps cleanly at any screen width -->
     <div class="catchment-grid">
       <label>
         Catchment Area (ha)
@@ -172,6 +176,7 @@
       </fieldset>
     </div>
 
+    <!-- FIX10: card 4 replaced Tank Fill % with running Peak Inflow; fill bar kept below -->
     <div class="sim-dashboard" role="region" aria-label="Live simulation metrics">
       <div class="metric-card">
         <div class="metric-label">Current Inflow</div>
@@ -189,20 +194,29 @@
         <div class="metric-unit">m³</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">Tank Fill</div>
-        <div class="metric-value" id="m-fill">0</div>
-        <div class="metric-unit">%</div>
-        <div class="fill-bar-bg" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-          <div class="fill-bar" id="fill-bar"></div>
-        </div>
+        <div class="metric-label">Peak Inflow</div>
+        <div class="metric-value" id="m-peak">0.00</div>
+        <div class="metric-unit">m³/s</div>
       </div>
     </div>
 
+    <!-- Tank fill bar shown separately below the dashboard cards -->
+    <div class="fill-row" role="region" aria-label="Tank fill level">
+      <span class="fill-row-label">Tank Fill</span>
+      <div class="fill-bar-bg" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="flex:1;">
+        <div class="fill-bar" id="fill-bar"></div>
+      </div>
+      <span class="fill-row-pct"><span id="m-fill">0</span>%</span>
+    </div>
+
+    <!-- FIX4/5: Peak Inflow and Peak Time added to result strip; total now 7 cards -->
     <div class="result-strip" aria-label="Design results">
-      <div><span>Max Tank Volume</span><strong id="max-volume">0 m³</strong></div>
-      <div><span>Max Factored Volume</span><strong id="factored-volume">0 m³</strong></div>
-      <div><span>Emptying Time</span><strong id="empty-time">0.0 hr</strong></div>
-      <div><span>Overflow Volume</span><strong id="spill-volume">0 m³</strong></div>
+      <div><span>Max Tank Volume</span><strong id="max-volume">— m³</strong></div>
+      <div><span>Max Factored Volume</span><strong id="factored-volume">— m³</strong></div>
+      <div><span>Emptying Time</span><strong id="empty-time">—</strong></div>
+      <div><span>Overflow Volume</span><strong id="spill-volume">— m³</strong></div>
+      <div><span>Peak Inflow</span><strong id="peak-inflow-res">—</strong></div>
+      <div><span>Peak Inflow Time</span><strong id="peak-time-res">—</strong></div>
       <div><span>Tank Check</span><strong id="tank-check">Ready</strong></div>
     </div>
 
@@ -246,24 +260,28 @@
     </div>
   </section>
 
+  <!-- FIX1/8: concept section now properly closed before checks section -->
   <section id="concept" class="card" aria-labelledby="concept-heading">
     <h2 id="concept-heading">Calculation Concept</h2>
     <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a simplified triangular hydrograph (Tp = storm duration / 2). Select intensity i from your local IDF curve at the duration equal to the system's Time of Concentration and your target return period (e.g. 10-year, 100-year).</p>
     <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph. The user inputs <em>Tc</em> (Time of Concentration); the model internally derives <em>Tp</em> (Time to Peak) as Tp = (Δt/2) + 0.6 × Tc. Tc max is 360 min for a 24-hour storm.</p>
+    <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation, including after the storm ends until the tank fully drains. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
     <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor. This is the required tank design size.</p>
     <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) at pump rate. Use this to verify inter-storm recovery.</p>
-    <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
+    <p><strong>Peak Inflow &amp; Peak Time:</strong> maximum total inflow rate reached during the simulation and the clock time at which it occurred. Includes both storm runoff and direct inflow.</p>
     <p><strong>Overflow Volume:</strong> total volume lost when the tank exceeded capacity. A non-zero value means the tank is undersized or the pump is too slow.</p>
     <p><strong>Best storage duration:</strong> the critical duration is the one producing the highest max factored volume while emptying time remains acceptable.</p>
     <p><strong>Dependency note:</strong> this tool loads Chart.js from a CDN (<code>cdn.jsdelivr.net</code>) and requires an internet connection. For offline use, download Chart.js and reference it locally in the <code>&lt;script&gt;</code> tag in the HTML head.</p>
+  </section>
 
   <section id="checks" class="card" aria-labelledby="checks-heading">
     <h2 id="checks-heading">Engineering Checks</h2>
     <div class="checks">
-      <span>Peak inflow tracked</span>
+      <span>Peak inflow &amp; time tracked</span>
       <span>Direct inflow (forcemain) supported</span>
+      <span>Post-storm drain-out simulated</span>
       <span>Storage uses max volume</span>
-      <span>Safety factor included</span>
+      <span>Safety factor ≥ 1.0 enforced</span>
       <span>Emptying time (actual volume)</span>
       <span>Overflow volume tracked</span>
       <span>SCS fixed at 24 hours</span>

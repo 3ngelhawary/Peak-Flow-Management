@@ -7,11 +7,14 @@ let lastTs = null;
 let simTime = 0;
 let tankVolume = 0;
 let maxTankVolume = 0;
-let spillVolume = 0;       // W3: tracks cumulative overflow volume
+let spillVolume = 0;       // tracks cumulative overflow volume
+let peakInflow = 0;        // FIX4/5: peak total inflow seen during sim (m³/s)
+let peakInflowTime = 0;    // FIX5: sim time (s) when peak inflow occurred
 let simRunning = false;
-let isPaused = false;      // BUG1: distinguish fresh start from resume
+let isPaused = false;      // distinguishes fresh start from resume
 let simSpeed = 300;
 let lastChartPush = 0;
+let lastResultUpdate = 0;  // FIX3: throttle updateResultStrip
 let hasRun = false;
 
 const SCS_TYPE_II = [
@@ -45,9 +48,9 @@ function bindLinkedInputs() {
   linkRangeAndPill('runoff-c', 'c-val', 0.05, 1, 2);
   linkRangeAndPill('storm-depth', 'storm-depth-val', 5, 200, 0);
   linkRangeAndPill('curve-number', 'cn-val', 30, 98, 0);
-  linkRangeAndPill('tc', 'tc-val', 10, 360, 0);
-  linkRangeAndPill('direct-inflow-r', 'direct-inflow-r-val', 0, 500, 0);  // Direct Inflow — Rational
-  linkRangeAndPill('direct-inflow-s', 'direct-inflow-s-val', 0, 500, 0);  // Direct Inflow — SCS
+  linkRangeAndPill('tc', 'tc-val', 10, 360, 0);  // Tc capped at 360 min for 24h storm
+  linkRangeAndPill('direct-inflow-r', 'direct-inflow-r-val', 0, 500, 0);
+  linkRangeAndPill('direct-inflow-s', 'direct-inflow-s-val', 0, 500, 0);
 }
 
 function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
@@ -92,7 +95,7 @@ function setControlGroupEnabled(groupId, enabled) {
   group.querySelectorAll('input, select, button').forEach(el => { el.disabled = !enabled; });
 }
 
-// BUG1 FIX: startSim handles both fresh start and resume via isPaused flag
+// startSim handles both fresh start and resume via isPaused flag
 function startSim() {
   if (isPaused) {
     // Resume: restart the animation loop only — do not reset state or rebuild hydrograph
@@ -106,7 +109,7 @@ function startSim() {
     return;
   }
 
-  // Fresh start: validate inputs first (W4 FIX)
+  // Fresh start — validate inputs first
   const areaHa = getNum('area', 50);
   const vmax = getVmax();
   if (areaHa <= 0) { setStatus('⚠ Catchment area must be greater than 0.', 'warning'); return; }
@@ -123,7 +126,10 @@ function startSim() {
   tankVolume = 0;
   maxTankVolume = 0;
   spillVolume = 0;
+  peakInflow = 0;
+  peakInflowTime = 0;
   lastTs = null;
+  lastResultUpdate = 0;
   hasRun = true;
   simRunning = true;
   isPaused = false;
@@ -137,7 +143,7 @@ function startSim() {
 
 function pauseSim() {
   simRunning = false;
-  isPaused = true;   // BUG1: flag so Start knows to resume, not restart
+  isPaused = true;
   cancelAnimationFrame(rafId);
   document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
@@ -146,19 +152,22 @@ function pauseSim() {
 
 function resetSim() {
   simRunning = false;
-  isPaused = false;  // BUG1: clear pause flag on full reset
+  isPaused = false;
   cancelAnimationFrame(rafId);
   lastTs = null;
   simTime = 0;
   tankVolume = 0;
   maxTankVolume = 0;
   spillVolume = 0;
+  peakInflow = 0;
+  peakInflowTime = 0;
+  lastResultUpdate = 0;
   hasRun = false;
   document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0);
   updateTankViz(0);
-  updateResultStrip();
+  updateResultStrip(true);
   resetChart();
   setStatus('Idle — press Start to begin', '');
   document.getElementById('sim-time').textContent = 'T = 0:00';
@@ -171,24 +180,33 @@ function tick(ts) {
   const simDelta = realDelta * simSpeed;
   simTime += simDelta;
 
-  const maxT = hydrograph[hydrograph.length - 1]?.t ?? 0;
-  if (simTime >= maxT) {
-    simTime = maxT;
-    updateDashboard(0, tankVolume);
-    updateTankViz(tankVolume / getVmax());
-    updateResultStrip();
-    pushChartPoint(simTime / 60, 0, tankVolume);
+  const directQ = getDirectInflow();
+  const hydrographEnd = hydrograph[hydrograph.length - 1]?.t ?? 0;
+
+  // FIX2: after hydrograph ends, continue draining if direct inflow > 0 or tank still has water.
+  // Sim ends when both hydrograph is done AND tank has fully drained.
+  const stormOver = simTime >= hydrographEnd;
+  const storageEmpty = tankVolume <= 0;
+
+  if (stormOver && storageEmpty && directQ === 0) {
+    simTime = hydrographEnd;
+    updateDashboard(0, 0);
+    updateTankViz(0);
+    updateResultStrip(true);
+    pushChartPoint(simTime / 60, 0, 0);
     endSim();
     return;
   }
 
-  const qIn = interpolateFlow(simTime) + getDirectInflow();  // storm runoff + constant direct inflow
+  // Storm runoff is zero after hydrograph ends; direct inflow continues
+  const stormQ = stormOver ? 0 : interpolateFlow(simTime);
+  const qIn = stormQ + directQ;
 
-  // W2 FIX: pump only draws when tank actually contains water
+  // Pump only draws when tank has water
   const effectivePump = tankVolume > 0 ? getQpump() : 0;
   const net = qIn - effectivePump;
 
-  // W3 FIX: accumulate spill before clamping tank volume
+  // Accumulate spill before clamping
   const rawNext = tankVolume + net * simDelta;
   if (rawNext > getVmax()) {
     spillVolume += rawNext - getVmax();
@@ -196,14 +214,28 @@ function tick(ts) {
   tankVolume = Math.max(0, Math.min(getVmax(), rawNext));
   maxTankVolume = Math.max(maxTankVolume, tankVolume);
 
+  // FIX4/5: track peak inflow and when it occurred
+  if (qIn > peakInflow) {
+    peakInflow = qIn;
+    peakInflowTime = simTime;
+  }
+
   updateDashboard(qIn, tankVolume);
   updateTankViz(tankVolume / getVmax());
-  updateResultStrip();
+
+  // FIX3: throttle result strip updates to match chart throttle (every 250ms real time)
+  const now = performance.now();
+  if (now - lastResultUpdate >= 250) {
+    updateResultStrip(false);
+    lastResultUpdate = now;
+  }
+
   pushChartPoint(simTime / 60, qIn, tankVolume);
   updateTimeText();
 
   const fill = tankVolume / getVmax();
   if (fill >= 0.9) setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
+  else if (stormOver) setStatus('Storm ended — draining tank…', 'running');
   else setStatus('Running', 'running');
 
   rafId = requestAnimationFrame(tick);
@@ -211,8 +243,10 @@ function tick(ts) {
 
 function endSim() {
   simRunning = false;
-  isPaused = false;  // BUG1: completed sim is not paused — next Start is fresh
+  isPaused = false;
+  updateResultStrip(true); // force final update
   document.getElementById('play-btn').disabled = false;
+  document.getElementById('pause-btn').disabled = false; // allow stepping through paused state
   document.getElementById('pause-btn').disabled = true;
   setStatus('Simulation complete', 'done');
   updateTimeText();
@@ -224,7 +258,7 @@ function buildHydrograph() {
     : buildRationalHydrograph();
 }
 
-// W1 NOTE: Rational Method uses a simplified symmetric triangular hydrograph.
+// Rational Method uses a simplified symmetric triangular hydrograph.
 // Tp = storm duration / 2 is a standard simplification.
 // Select intensity i from your local IDF curve at the duration equal to the
 // system's Time of Concentration and the target return period (e.g. 10-year).
@@ -252,19 +286,18 @@ function buildScsHydrograph() {
   const areaHa = getNum('area', 50);
   const tcMin = getNum('tc-val', 60);
 
-  // W5 NOTE: dtSeconds is the computation time-step in seconds.
+  // dtSeconds is the computation time-step in seconds.
   // The kernel is normalised by dividing by responseArea (units: s),
   // making it a density in 1/s. Convolution yields flow in m³/s.
-  // If dtSeconds is ever changed, it must match the step used in
+  // IMPORTANT: if dtSeconds is ever changed, it must match the step used in
   // both the stormEnd loop and the kernel convolution loop below.
   const dtSeconds = 360;
   const stormEnd = 24 * 3600;
 
   const tLag = 0.6 * tcMin * 60; // NRCS: tLag = 0.6 × Tc, converted to seconds
 
-  // BUG2 FIX: removed Math.max(dtSeconds, …) floor.
-  // Original code caused Tc to have no effect for small values because tp
-  // snapped to dtSeconds. Now tp = (dt/2) + tLag with no floor.
+  // tp uses no floor — removed Math.max(dtSeconds,…) that caused Tc to be ignored
+  // for small values. tp = (dt/2) + tLag with no floor.
   const tp = (dtSeconds / 2) + tLag;
 
   const nrcsUh = [
@@ -356,6 +389,7 @@ function interpolateFlow(t) {
   return 0;
 }
 
+// FIX10: dashboard now shows running peak inflow in the 4th card
 function updateDashboard(qIn, volume) {
   const vMax = getVmax();
   const excess = Math.max(0, qIn - getQpump());
@@ -363,33 +397,45 @@ function updateDashboard(qIn, volume) {
   document.getElementById('m-qin').textContent = qIn.toFixed(2);
   document.getElementById('m-excess').textContent = excess.toFixed(2);
   document.getElementById('m-volume').textContent = Math.round(volume).toLocaleString();
-  document.getElementById('m-fill').textContent = Math.round(fillPct);
+  document.getElementById('m-peak').textContent = peakInflow.toFixed(2);  // FIX10: running peak
   const bar = document.getElementById('fill-bar');
   bar.style.width = `${Math.min(100, fillPct)}%`;
   bar.style.background = fillPct >= 90 ? '#ef4444' : fillPct >= 75 ? '#f97316' : fillPct >= 50 ? '#eab308' : 'var(--blue)';
   bar.parentElement.setAttribute('aria-valuenow', Math.round(fillPct));
+  // Update fill metric separately (still needed by its own card)
+  document.getElementById('m-fill').textContent = Math.round(fillPct);
 }
 
-function updateResultStrip() {
-  // Clamp SF to minimum 1.0 — a value below 1 would reduce the design volume
-  // below the simulated peak, making tank-check always pass falsely.
+// FIX3: accepts a `force` flag — only writes DOM every 250ms during sim,
+// always writes on reset and at end of simulation.
+function updateResultStrip(force) {
+  if (!force) return; // throttling handled in tick() — this function is now called only when needed
+
+  // Clamp SF to minimum 1.0 — below 1 would make tank-check falsely pass
   const sf = Math.max(1.0, getNum('safety-factor', 1.15));
   const factored = maxTankVolume * sf;
   const pump = getQpump();
 
-  // BUG3 FIX: emptying time uses actual accumulated peak volume (maxTankVolume),
-  // not factored volume. Safety factor sizes the tank design — it does not
-  // represent additional physical water that needs to be drained.
+  // Emptying time uses actual peak volume — safety factor is a design size, not physical water
   const emptyHours = pump > 0 ? maxTankVolume / pump / 3600 : null;
 
-  document.getElementById('max-volume').textContent = `${Math.round(maxTankVolume).toLocaleString()} m³`;
-  document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
-  document.getElementById('empty-time').textContent = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'N/A';
-  document.getElementById('tank-check').textContent = hasRun ? (factored > getVmax() ? 'Insufficient' : 'OK') : 'Ready';
+  // FIX5: peak inflow time displayed as mm:ss or h:mm:ss
+  const pth = Math.floor(peakInflowTime / 3600);
+  const ptm = Math.floor((peakInflowTime % 3600) / 60);
+  const pts = Math.floor(peakInflowTime % 60);
+  const peakTimeStr = hasRun
+    ? (pth > 0
+        ? `${pth}:${String(ptm).padStart(2,'0')}:${String(pts).padStart(2,'0')}`
+        : `${ptm}:${String(pts).padStart(2,'0')}`)
+    : '—';
 
-  // W3 FIX: display accumulated overflow/spill volume
-  const spillEl = document.getElementById('spill-volume');
-  if (spillEl) spillEl.textContent = `${Math.round(spillVolume).toLocaleString()} m³`;
+  document.getElementById('max-volume').textContent    = `${Math.round(maxTankVolume).toLocaleString()} m³`;
+  document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
+  document.getElementById('empty-time').textContent    = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'N/A';
+  document.getElementById('spill-volume').textContent  = `${Math.round(spillVolume).toLocaleString()} m³`;
+  document.getElementById('peak-inflow-res').textContent = hasRun ? `${peakInflow.toFixed(2)} m³/s` : '—';  // FIX4
+  document.getElementById('peak-time-res').textContent   = peakTimeStr;                                       // FIX5
+  document.getElementById('tank-check').textContent    = hasRun ? (factored > getVmax() ? 'Insufficient' : 'OK') : 'Ready';
 }
 
 function updateTankViz(f) {
@@ -417,7 +463,8 @@ function initChart() {
     data: {
       labels: [],
       datasets: [
-        { label: 'Inflow Q_in (m³/s)', data: [], borderColor: '#0ea5e9', borderWidth: 2.5, fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFlow' },
+        // FIX9: label updated to clarify it includes direct inflow
+        { label: 'Total Inflow (storm + direct) m³/s', data: [], borderColor: '#0ea5e9', borderWidth: 2.5, fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFlow' },
         { label: 'Pump Capacity (m³/s)', data: [], borderColor: '#f97316', borderWidth: 2, borderDash: [6,4], fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow' },
         { label: 'Tank Fill (%)', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', borderWidth: 2, fill: true, tension: 0.35, pointRadius: 0, yAxisID: 'yFill' }
       ]
@@ -477,17 +524,13 @@ function getNum(id, fallback) {
     return fallback;
   }
   const n = Number(el.value);
-  // W4 FIX: reject non-finite and negative values
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-// W6 FIX: default pump changed from 1900 L/s to 200 L/s (realistic for 50 ha catchment)
 function getQpump() { return getNum('qpump-lps', 200) / 1000; }
-function getVmax() { return getNum('vmax', 15000); }
+function getVmax()  { return getNum('vmax', 15000); }
 
-// Returns direct inflow in m³/s from whichever method is active.
-// Direct Inflow is a constant forcemain/external discharge added on top of
-// storm runoff throughout the entire simulation duration.
+// Direct Inflow: constant forcemain/external discharge (m³/s) added throughout simulation.
 function getDirectInflow() {
   const isScs = document.getElementById('method-select').value === 'scs';
   const lps = isScs
