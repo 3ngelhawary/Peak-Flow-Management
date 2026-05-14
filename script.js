@@ -45,7 +45,9 @@ function bindLinkedInputs() {
   linkRangeAndPill('runoff-c', 'c-val', 0.05, 1, 2);
   linkRangeAndPill('storm-depth', 'storm-depth-val', 5, 200, 0);
   linkRangeAndPill('curve-number', 'cn-val', 30, 98, 0);
-  linkRangeAndPill('tc', 'tc-val', 10, 360, 0);  // BUG4: Tc capped at 360 min for 24h storm
+  linkRangeAndPill('tc', 'tc-val', 10, 360, 0);
+  linkRangeAndPill('direct-inflow-r', 'direct-inflow-r-val', 0, 500, 0);  // Direct Inflow — Rational
+  linkRangeAndPill('direct-inflow-s', 'direct-inflow-s-val', 0, 500, 0);  // Direct Inflow — SCS
 }
 
 function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
@@ -180,7 +182,7 @@ function tick(ts) {
     return;
   }
 
-  const qIn = interpolateFlow(simTime);
+  const qIn = interpolateFlow(simTime) + getDirectInflow();  // storm runoff + constant direct inflow
 
   // W2 FIX: pump only draws when tank actually contains water
   const effectivePump = tankVolume > 0 ? getQpump() : 0;
@@ -482,6 +484,17 @@ function getNum(id, fallback) {
 // W6 FIX: default pump changed from 1900 L/s to 200 L/s (realistic for 50 ha catchment)
 function getQpump() { return getNum('qpump-lps', 200) / 1000; }
 function getVmax() { return getNum('vmax', 15000); }
+
+// Returns direct inflow in m³/s from whichever method is active.
+// Direct Inflow is a constant forcemain/external discharge added on top of
+// storm runoff throughout the entire simulation duration.
+function getDirectInflow() {
+  const isScs = document.getElementById('method-select').value === 'scs';
+  const lps = isScs
+    ? getNum('direct-inflow-s-val', 0)
+    : getNum('direct-inflow-r-val', 0);
+  return lps / 1000;
+}
 
 function setStatus(text, cls) {
   const badge = document.getElementById('status-badge');

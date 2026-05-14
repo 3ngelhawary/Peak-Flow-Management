@@ -81,8 +81,15 @@
               <input id="c-val" class="value-pill" type="number" min="0.05" max="1" step="0.05" value="0.75" aria-label="Runoff coefficient value" />
             </div>
           </label>
+          <label class="slider-label">
+            Direct Inflow (L/sec)
+            <div class="slider-row">
+              <input id="direct-inflow-r" type="range" min="0" max="500" value="0" step="10" />
+              <input id="direct-inflow-r-val" class="value-pill" type="number" min="0" max="500" step="10" value="0" aria-label="Direct inflow value rational" />
+            </div>
+          </label>
         </div>
-        <div class="method-note">Note: For the Rational Method, Tc is implicit — select intensity i from your IDF curve at the duration equal to the system's Time of Concentration.</div>
+        <div class="method-note" style="margin-top: 14px;">Note: For the Rational Method, Tc is implicit — select intensity i from your IDF curve at the duration equal to the system's Time of Concentration. Direct Inflow represents a constant forcemain or external discharge added throughout the storm.</div>
       </div>
 
       <div class="control-card inactive" id="scs-controls">
@@ -109,8 +116,15 @@
               <input id="tc-val" class="value-pill" type="number" min="10" max="360" step="1" value="60" aria-label="Time of concentration value" disabled />
             </div>
           </label>
-          <div class="method-note" style="grid-column: 1 / -1;">Tc is the Time of Concentration. The NRCS method derives Time to Peak as Tp = (Δt/2) + 0.6 × Tc. Tp controls the hydrograph shape — a longer Tc produces a later, flatter peak.</div>
+          <label class="slider-label">
+            Direct Inflow (L/sec)
+            <div class="slider-row">
+              <input id="direct-inflow-s" type="range" min="0" max="500" value="0" step="10" disabled />
+              <input id="direct-inflow-s-val" class="value-pill" type="number" min="0" max="500" step="10" value="0" aria-label="Direct inflow value SCS" disabled />
+            </div>
+          </label>
         </div>
+        <div class="method-note" style="margin-top: 14px;">Tc is the Time of Concentration. NRCS derives Time to Peak as Tp = (Δt/2) + 0.6 × Tc — a longer Tc gives a later, flatter peak. Direct Inflow represents a constant forcemain or external discharge added throughout the storm.</div>
       </div>
     </div>
 
@@ -237,6 +251,7 @@
     <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph. The user inputs <em>Tc</em> (Time of Concentration); the model internally derives <em>Tp</em> (Time to Peak) as Tp = (Δt/2) + 0.6 × Tc. Tc max is 360 min for a 24-hour storm.</p>
     <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor. This is the required tank design size.</p>
     <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) at pump rate. Use this to verify inter-storm recovery.</p>
+    <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
     <p><strong>Overflow Volume:</strong> total volume lost when the tank exceeded capacity. A non-zero value means the tank is undersized or the pump is too slow.</p>
     <p><strong>Best storage duration:</strong> the critical duration is the one producing the highest max factored volume while emptying time remains acceptable.</p>
     <p><strong>Dependency note:</strong> this tool loads Chart.js from a CDN (<code>cdn.jsdelivr.net</code>) and requires an internet connection. For offline use, download Chart.js and reference it locally in the <code>&lt;script&gt;</code> tag in the HTML head.</p>
@@ -245,6 +260,7 @@
     <h2 id="checks-heading">Engineering Checks</h2>
     <div class="checks">
       <span>Peak inflow tracked</span>
+      <span>Direct inflow (forcemain) supported</span>
       <span>Storage uses max volume</span>
       <span>Safety factor included</span>
       <span>Emptying time (actual volume)</span>
