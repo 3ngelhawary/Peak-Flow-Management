@@ -7,6 +7,7 @@ let rafId      = null;
 let lastTs     = null;
 let simTime    = 0;    // simulation seconds elapsed
 let tankVolume = 0;    // m³
+let maxTankVolume = 0; // maximum factored volume reached during simulation
 let simRunning = false;
 let simSpeed   = 300;  // simulation-seconds per real-second
 let lastChartPush = 0;
@@ -88,7 +89,7 @@ function pauseSim() {
 function resetSim() {
   simRunning = false;
   cancelAnimationFrame(rafId);
-  lastTs = null; simTime = 0; tankVolume = 0;
+  lastTs = null; simTime = 0; tankVolume = 0; maxTankVolume = 0;
   document.getElementById('play-btn').disabled  = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0);
@@ -109,6 +110,7 @@ function tick(ts) {
   const maxT = hydrograph[hydrograph.length - 1]?.t ?? 0;
   if (simTime >= maxT) {
     simTime = maxT;
+    maxTankVolume = Math.max(maxTankVolume, tankVolume);
     updateDashboard(0, tankVolume);
     updateTankViz(tankVolume / getVmax());
     pushChartPoint(simTime / 60, 0, tankVolume);
@@ -124,6 +126,7 @@ function tick(ts) {
   const volumeDelta = net > 0 ? net * simDelta * sf : net * simDelta;
 
   tankVolume = Math.max(0, Math.min(vMax, tankVolume + volumeDelta));
+  maxTankVolume = Math.max(maxTankVolume, tankVolume);
 
   const fill = tankVolume / vMax;
   updateDashboard(Qin, tankVolume);
@@ -255,7 +258,8 @@ function updateDashboard(Qin, volume) {
 
   document.getElementById('m-qin').textContent    = Qin.toFixed(2);
   document.getElementById('m-excess').textContent  = excess.toFixed(2);
-  document.getElementById('m-volume').textContent  = Math.round(volume).toLocaleString();
+  document.getElementById('m-volume').textContent  = Math.round(maxTankVolume).toLocaleString();
+  document.getElementById('m-empty-time').textContent = formatEmptyingTime(maxTankVolume, getQpump());
   document.getElementById('m-fill').textContent    = Math.round(fillPct);
 
   const bar = document.getElementById('fill-bar');
@@ -388,6 +392,20 @@ function resetChart() {
 function getQpump() { return Number(document.getElementById('qpump-sim').value) || 1.9; }
 function getVmax()  { return Number(document.getElementById('vmax').value)      || 15000; }
 function getSafetyFactor() { return Number(document.getElementById('sf-sim').value) || 1.0; }
+
+function formatEmptyingTime(volume, qpump) {
+  if (volume <= 0) return '0 min';
+  if (qpump <= 0) return 'N/A';
+
+  const minutes = volume / qpump / 60;
+  if (minutes < 60) return `${Math.ceil(minutes)} min`;
+
+  const hours = minutes / 60;
+  if (hours < 24) return `${hours.toFixed(1)} hr`;
+
+  const days = hours / 24;
+  return `${days.toFixed(1)} d`;
+}
 
 function setStatus(text, cls) {
   const b = document.getElementById('status-badge');

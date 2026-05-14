@@ -116,9 +116,14 @@
         <div class="metric-unit">m³/s</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">Factored Tank Volume</div>
+        <div class="metric-label">Max Factored Volume</div>
         <div class="metric-value" id="m-volume">0</div>
         <div class="metric-unit">m³</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Emptying Time</div>
+        <div class="metric-value" id="m-empty-time">0 min</div>
+        <div class="metric-unit">after storm</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Tank Fill</div>
@@ -178,8 +183,9 @@
 
   <section id="concept" class="card" aria-labelledby="concept-heading">
     <h2 id="concept-heading">Concept</h2>
-    <p class="note">The dynamic tank volume increases only when inflow exceeds pump capacity. Positive storage is multiplied by the safety factor.</p>
-    <p class="equation">V<sub>tank</sub> = Σ max(Q<sub>in</sub> − Q<sub>pump</sub>, 0) × Δt × SF</p>
+    <p class="note">The displayed required storage is the maximum factored volume reached during the simulation, not the final remaining volume. Emptying time is calculated from that maximum volume divided by pump capacity.</p>
+    <p class="equation">V<sub>required</sub> = max[Σ(Q<sub>in</sub> − Q<sub>pump</sub>) × Δt × SF]</p>
+    <p><strong>Tank Capacity</strong> is the physical available tank size entered by the user. <strong>Max Factored Volume</strong> is the calculated required storage during the storm, including safety factor. If Max Factored Volume is higher than Tank Capacity, the tank is undersized.</p>
   </section>
 
   <section id="checks" class="card" aria-labelledby="checks-heading">
