@@ -10,6 +10,7 @@ let maxTankVolume = 0;
 let simRunning = false;
 let simSpeed = 300;
 let lastChartPush = 0;
+let hasRun = false;
 
 const SCS_TYPE_II = [
   [0,0],[1,0.5],[2,1.1],[3,1.7],[4,2.4],[5,3.2],[6,4.0],
@@ -25,7 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
   bindControls();
   bindLinkedInputs();
   setMethodMode('rational');
-  resetSim();
 });
 
 function bindControls() {
@@ -93,6 +93,7 @@ function startSim() {
     setStatus('No hydrograph data. Check input values.', 'warning');
     return;
   }
+  hasRun = true;
   simRunning = true;
   lastTs = null;
   document.getElementById('play-btn').disabled = true;
@@ -116,6 +117,7 @@ function resetSim() {
   simTime = 0;
   tankVolume = 0;
   maxTankVolume = 0;
+  hasRun = false;
   document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0);
@@ -275,7 +277,7 @@ function updateResultStrip() {
   document.getElementById('max-volume').textContent = `${Math.round(maxTankVolume).toLocaleString()} m³`;
   document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
   document.getElementById('empty-time').textContent = `${emptyHours.toFixed(1)} hr`;
-  document.getElementById('tank-check').textContent = factored > getVmax() ? 'Insufficient' : 'OK';
+  document.getElementById('tank-check').textContent = hasRun ? (factored > getVmax() ? 'Insufficient' : 'OK') : 'Ready';
 }
 
 function updateTankViz(f) {
@@ -350,11 +352,18 @@ function resetChart() {
 function updateTimeText() {
   const h = Math.floor(simTime / 3600);
   const m = Math.floor((simTime % 3600) / 60);
-  document.getElementById('sim-time').textContent = h > 0 ? `T = ${h}:${String(m).padStart(2, '0')}` : `T = ${m}:00`;
+  const sec = Math.floor(simTime % 60);
+  document.getElementById('sim-time').textContent = h > 0
+    ? `T = ${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `T = ${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function getNum(id, fallback) {
   const el = document.getElementById(id);
+  if (!el) {
+    console.warn(`getNum: element #${id} not found`);
+    return fallback;
+  }
   const n = Number(el.value);
   return Number.isFinite(n) ? n : fallback;
 }
