@@ -223,7 +223,8 @@ function interpolateScsRain(hour, depthMm) {
     const p1 = SCS_TYPE_II[i];
     if (p1[0] >= hour) {
       const a = (hour - p0[0]) / (p1[0] - p0[0]);
-      return p0[1] + a * (p1[1] - p0[1]);
+      const rawDepthFor50mm = p0[1] + a * (p1[1] - p0[1]);
+      return (rawDepthFor50mm / 50) * depthMm;
     }
   }
   return depthMm;
