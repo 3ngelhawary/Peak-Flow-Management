@@ -1,78 +1,101 @@
 'use strict';
 
-// ── State ───────────────────────────────────────────────
-let chart      = null;
-let hydrograph = [];   // [{t: seconds, Q: m³/s}]
-let rafId      = null;
-let lastTs     = null;
-let simTime    = 0;    // simulation seconds elapsed
-let tankVolume = 0;    // m³
+let chart = null;
+let hydrograph = [];
+let rafId = null;
+let lastTs = null;
+let simTime = 0;
+let tankVolume = 0;
+let maxTankVolume = 0;
 let simRunning = false;
-let simSpeed   = 300;  // simulation-seconds per real-second
+let simSpeed = 300;
 let lastChartPush = 0;
 
-// ── Boot ────────────────────────────────────────────────
+const SCS_TYPE_II = [
+  [0,0],[1,0.5],[2,1.1],[3,1.7],[4,2.4],[5,3.2],[6,4.0],
+  [7,4.9],[8,6.0],[9,7.3],[10,9.0],[10.5,10.2],[11,11.7],
+  [11.3,13.0],[11.5,14.1],[11.6,15.3],[11.7,17.7],[11.8,21.5],
+  [11.9,28.4],[12,33.1],[12.1,34.1],[12.5,36.8],[13,38.6],
+  [14,41.0],[15,42.7],[16,44.0],[17,45.1],[18,46.1],[19,46.9],
+  [20,47.6],[21,48.2],[22,48.8],[23,49.4],[24,50]
+];
+
 document.addEventListener('DOMContentLoaded', () => {
   initChart();
-  bindSimControls();
-  bindSliders();
-  bindCalculator();
+  bindControls();
+  bindLinkedInputs();
+  setMethodMode('rational');
+  resetSim();
 });
 
-// ── Slider live output ──────────────────────────────────
-function bindSliders() {
-  const intensity = document.getElementById('intensity');
-  const intOut    = document.getElementById('intensity-val');
-  intensity.addEventListener('input', () => { intOut.value = `${intensity.value} mm/hr`; });
-
-  const coeffEl  = document.getElementById('runoff-c');
-  const coeffOut = document.getElementById('c-val');
-  coeffEl.addEventListener('input', () => { coeffOut.value = Number(coeffEl.value).toFixed(2); });
-}
-
-// ── Tab switching ────────────────────────────────────────
-function bindSimControls() {
-  document.getElementById('tab-synthetic').addEventListener('click', () => switchTab('synthetic'));
-  document.getElementById('tab-live').addEventListener('click',      () => switchTab('live'));
-
-  document.getElementById('play-btn').addEventListener('click',  startSim);
+function bindControls() {
+  document.getElementById('method-select').addEventListener('change', e => setMethodMode(e.target.value));
+  document.getElementById('play-btn').addEventListener('click', startSim);
   document.getElementById('pause-btn').addEventListener('click', pauseSim);
   document.getElementById('reset-btn').addEventListener('click', resetSim);
-
   document.querySelectorAll('input[name="simspeed"]').forEach(r => {
     r.addEventListener('change', () => { simSpeed = Number(r.value); });
   });
-
-  document.getElementById('geo-btn').addEventListener('click',   getLocation);
-  document.getElementById('fetch-btn').addEventListener('click', fetchForecast);
 }
 
-function switchTab(mode) {
-  const isSynth = mode === 'synthetic';
-  document.getElementById('panel-synthetic').classList.toggle('hidden', !isSynth);
-  document.getElementById('panel-live').classList.toggle('hidden',      isSynth);
-  document.getElementById('tab-synthetic').classList.toggle('tab-active', isSynth);
-  document.getElementById('tab-live').classList.toggle('tab-active',      !isSynth);
-  document.getElementById('tab-synthetic').setAttribute('aria-selected', isSynth);
-  document.getElementById('tab-live').setAttribute('aria-selected',      !isSynth);
+function bindLinkedInputs() {
+  linkRangeAndPill('intensity', 'intensity-val', 5, 150, 0);
+  linkRangeAndPill('runoff-c', 'c-val', 0.05, 1, 2);
+  linkRangeAndPill('storm-depth', 'storm-depth-val', 5, 200, 0);
+  linkRangeAndPill('curve-number', 'cn-val', 30, 98, 0);
 }
 
-// ── Simulation engine ────────────────────────────────────
-function startSim() {
-  const livePanel = document.getElementById('panel-live');
-  const isLive    = !livePanel.classList.contains('hidden');
+function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
+  const range = document.getElementById(rangeId);
+  const input = document.getElementById(inputId);
+  const format = value => Number(value).toFixed(decimals);
+  const clamp = value => Math.min(max, Math.max(min, Number(value)));
 
-  if (!isLive || hydrograph.length === 0) {
-    hydrograph = buildSyntheticHydrograph();
+  range.addEventListener('input', () => { input.value = format(range.value); });
+  input.addEventListener('change', () => {
+    const value = clamp(input.value || min);
+    range.value = value;
+    input.value = format(value);
+  });
+}
+
+function setMethodMode(mode) {
+  const isScs = mode === 'scs';
+  document.getElementById('method-label').textContent = isScs ? 'SCS Curve Number' : 'Rational Method';
+  document.getElementById('method-note').textContent = isScs
+    ? 'SCS uses storm depth and Curve Number CN.'
+    : 'Rational uses rainfall intensity and runoff coefficient C.';
+
+  setControlGroupEnabled('rational-controls', !isScs);
+  setControlGroupEnabled('scs-controls', isScs);
+
+  const duration = document.getElementById('storm-duration');
+  if (isScs) {
+    duration.value = '1440';
+    duration.disabled = true;
+  } else {
+    duration.disabled = false;
+    if (duration.value === '1440') duration.value = '60';
   }
-  if (hydrograph.length === 0) {
-    setStatus('No hydrograph data. Configure parameters or fetch live forecast.', 'warning');
+
+  resetSim();
+}
+
+function setControlGroupEnabled(groupId, enabled) {
+  const group = document.getElementById(groupId);
+  group.classList.toggle('inactive', !enabled);
+  group.querySelectorAll('input, select, button').forEach(el => { el.disabled = !enabled; });
+}
+
+function startSim() {
+  hydrograph = buildHydrograph();
+  if (!hydrograph.length) {
+    setStatus('No hydrograph data. Check input values.', 'warning');
     return;
   }
-
   simRunning = true;
-  lastTs     = null;
-  document.getElementById('play-btn').disabled  = true;
+  lastTs = null;
+  document.getElementById('play-btn').disabled = true;
   document.getElementById('pause-btn').disabled = false;
   setStatus('Running', 'running');
   rafId = requestAnimationFrame(tick);
@@ -81,7 +104,7 @@ function startSim() {
 function pauseSim() {
   simRunning = false;
   cancelAnimationFrame(rafId);
-  document.getElementById('play-btn').disabled  = false;
+  document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   setStatus('Paused', 'paused');
 }
@@ -89,11 +112,15 @@ function pauseSim() {
 function resetSim() {
   simRunning = false;
   cancelAnimationFrame(rafId);
-  lastTs = null; simTime = 0; tankVolume = 0;
-  document.getElementById('play-btn').disabled  = false;
+  lastTs = null;
+  simTime = 0;
+  tankVolume = 0;
+  maxTankVolume = 0;
+  document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0);
   updateTankViz(0);
+  updateResultStrip();
   resetChart();
   setStatus('Idle — press Start to begin', '');
   document.getElementById('sim-time').textContent = 'T = 0:00';
@@ -101,80 +128,114 @@ function resetSim() {
 
 function tick(ts) {
   if (lastTs === null) lastTs = ts;
-  const realDelta = Math.min((ts - lastTs) / 1000, 0.1); // cap at 100 ms
+  const realDelta = Math.min((ts - lastTs) / 1000, 0.1);
   lastTs = ts;
-
-  const simDelta  = realDelta * simSpeed;
-  simTime        += simDelta;
+  const simDelta = realDelta * simSpeed;
+  simTime += simDelta;
 
   const maxT = hydrograph[hydrograph.length - 1]?.t ?? 0;
   if (simTime >= maxT) {
     simTime = maxT;
     updateDashboard(0, tankVolume);
     updateTankViz(tankVolume / getVmax());
+    updateResultStrip();
     pushChartPoint(simTime / 60, 0, tankVolume);
     endSim();
     return;
   }
 
-  const Qin    = interpolateFlow(simTime);
-  const Qpump  = getQpump();
-  const vMax   = getVmax();
-  const net    = Qin - Qpump;
+  const qIn = interpolateFlow(simTime);
+  const net = qIn - getQpump();
+  tankVolume = Math.max(0, Math.min(getVmax(), tankVolume + net * simDelta));
+  maxTankVolume = Math.max(maxTankVolume, tankVolume);
 
-  tankVolume = Math.max(0, Math.min(vMax, tankVolume + net * simDelta));
+  updateDashboard(qIn, tankVolume);
+  updateTankViz(tankVolume / getVmax());
+  updateResultStrip();
+  pushChartPoint(simTime / 60, qIn, tankVolume);
+  updateTimeText();
 
-  const fill = tankVolume / vMax;
-  updateDashboard(Qin, tankVolume);
-  updateTankViz(fill);
-  pushChartPoint(simTime / 60, Qin, tankVolume);
-
-  const m = Math.floor(simTime / 60);
-  const s = Math.floor(simTime % 60);
-  document.getElementById('sim-time').textContent = `T = ${m}:${String(s).padStart(2,'0')}`;
-
-  if (fill >= 0.9) {
-    setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
-  } else if (document.getElementById('status-badge').className.includes('running')) {
-    setStatus('Running', 'running');
-  }
+  const fill = tankVolume / getVmax();
+  if (fill >= 0.9) setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
+  else setStatus('Running', 'running');
 
   rafId = requestAnimationFrame(tick);
 }
 
 function endSim() {
   simRunning = false;
-  document.getElementById('play-btn').disabled  = false;
+  document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   setStatus('Simulation complete', 'done');
+  updateTimeText();
 }
 
-// ── SCS Triangular Hydrograph (Rational Method peak) ────
-function buildSyntheticHydrograph() {
-  const iMmHr  = Number(document.getElementById('intensity').value)     || 50;
-  const durMin = Number(document.getElementById('storm-duration').value) || 60;
-  const areaHa = Number(document.getElementById('area').value)          || 50;
-  const C      = Number(document.getElementById('runoff-c').value)      || 0.75;
+function buildHydrograph() {
+  return document.getElementById('method-select').value === 'scs'
+    ? buildScsHydrograph()
+    : buildRationalHydrograph();
+}
 
-  // Peak flow via Rational Method: Q = C·i·A / 360  (A in ha, i in mm/hr → m³/s)
-  const Qpeak = (C * iMmHr * areaHa) / 360;
-
-  // SCS triangular hydrograph
-  const Tp = (durMin / 2) * 60; // time to peak (seconds)
-  const Tb = 2.67 * Tp;         // base time (seconds)
-
+function buildRationalHydrograph() {
+  const intensity = getNum('intensity-val', 50);
+  const durationMin = getNum('storm-duration', 60);
+  const areaHa = getNum('area', 50);
+  const c = getNum('c-val', 0.75);
+  const qPeak = (c * intensity * areaHa) / 360;
+  const tp = (durationMin / 2) * 60;
+  const tb = 2.67 * tp;
   const pts = [];
-  const dt  = 30; // 30-second steps
-  for (let t = 0; t <= Tb + dt; t += dt) {
-    let Q = 0;
-    if (t <= Tp)      Q = Qpeak * (t / Tp);
-    else if (t <= Tb) Q = Qpeak * (Tb - t) / (Tb - Tp);
-    pts.push({ t, Q: Math.max(0, Q) });
+  for (let t = 0; t <= tb + 30; t += 30) {
+    let q = 0;
+    if (t <= tp) q = qPeak * (t / tp);
+    else if (t <= tb) q = qPeak * (tb - t) / (tb - tp);
+    pts.push({ t, Q: Math.max(0, q) });
   }
   return pts;
 }
 
-// ── Interpolate Q from hydrograph at time t (seconds) ───
+function buildScsHydrograph() {
+  const depthMm = getNum('storm-depth-val', 50);
+  const cn = getNum('cn-val', 75);
+  const areaHa = getNum('area', 50);
+  const dtSeconds = 360;
+  const pts = [];
+  let lastRunoffDepth = 0;
+
+  for (let t = 0; t <= 24 * 3600; t += dtSeconds) {
+    const hr = t / 3600;
+    const cumulativeRain = interpolateScsRain(hr, depthMm);
+    const cumulativeRunoff = calcCnRunoffDepth(cumulativeRain, cn);
+    const incrementalRunoff = Math.max(0, cumulativeRunoff - lastRunoffDepth);
+    lastRunoffDepth = cumulativeRunoff;
+    const volume = incrementalRunoff / 1000 * areaHa * 10000;
+    pts.push({ t, Q: volume / dtSeconds });
+  }
+  pts.push({ t: 24 * 3600 + dtSeconds, Q: 0 });
+  return pts;
+}
+
+function interpolateScsRain(hour, depthMm) {
+  if (hour <= 0) return 0;
+  if (hour >= 24) return depthMm;
+  for (let i = 1; i < SCS_TYPE_II.length; i++) {
+    const p0 = SCS_TYPE_II[i - 1];
+    const p1 = SCS_TYPE_II[i];
+    if (p1[0] >= hour) {
+      const a = (hour - p0[0]) / (p1[0] - p0[0]);
+      return p0[1] + a * (p1[1] - p0[1]);
+    }
+  }
+  return depthMm;
+}
+
+function calcCnRunoffDepth(rainMm, cn) {
+  const s = (25400 / cn) - 254;
+  const ia = 0.2 * s;
+  if (rainMm <= ia) return 0;
+  return Math.pow(rainMm - ia, 2) / (rainMm + 0.8 * s);
+}
+
 function interpolateFlow(t) {
   if (!hydrograph.length) return 0;
   if (t <= hydrograph[0].t) return hydrograph[0].Q;
@@ -182,118 +243,58 @@ function interpolateFlow(t) {
   if (t >= last.t) return 0;
   for (let i = 1; i < hydrograph.length; i++) {
     if (hydrograph[i].t >= t) {
-      const p0 = hydrograph[i - 1], p1 = hydrograph[i];
-      const a  = (t - p0.t) / (p1.t - p0.t);
+      const p0 = hydrograph[i - 1];
+      const p1 = hydrograph[i];
+      const a = (t - p0.t) / (p1.t - p0.t);
       return p0.Q + a * (p1.Q - p0.Q);
     }
   }
   return 0;
 }
 
-// ── Live forecast via Open-Meteo ─────────────────────────
-function getLocation() {
-  const statusEl = document.getElementById('geo-status');
-  if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
-  statusEl.textContent = 'Locating…';
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      document.getElementById('lat-in').value = pos.coords.latitude.toFixed(4);
-      document.getElementById('lon-in').value = pos.coords.longitude.toFixed(4);
-      statusEl.textContent = `📍 ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`;
-    },
-    () => { statusEl.textContent = 'Location access denied.'; }
-  );
-}
-
-async function fetchForecast() {
-  const lat    = parseFloat(document.getElementById('lat-in').value);
-  const lon    = parseFloat(document.getElementById('lon-in').value);
-  const areaHa = Number(document.getElementById('area').value)     || 50;
-  const C      = Number(document.getElementById('runoff-c').value) || 0.75;
-  const statusEl = document.getElementById('geo-status');
-
-  if (isNaN(lat) || isNaN(lon)) { statusEl.textContent = 'Enter valid coordinates first.'; return; }
-  statusEl.textContent = 'Fetching forecast…';
-
-  try {
-    const url  = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-
-    hydrograph = buildLiveHydrograph(data.hourly, areaHa, C);
-    const peakQ = Math.max(...hydrograph.map(p => p.Q));
-    statusEl.textContent = `✓ 48-hr forecast loaded — Peak inflow: ${peakQ.toFixed(2)} m³/s`;
-  } catch (err) {
-    statusEl.textContent = `Fetch error: ${err.message}`;
-  }
-}
-
-function buildLiveHydrograph(hourly, areaHa, C) {
-  const { time, precipitation } = hourly;
-  const now = new Date();
-  const pts = [];
-  let simT  = 0;
-
-  for (let i = 0; i < time.length; i++) {
-    if (new Date(time[i]) < now) continue;
-    const Q = ((C * (precipitation[i] || 0) * areaHa) / 360);
-    pts.push({ t: simT, Q });
-    simT += 3600;
-    if (pts.length >= 24) break;
-  }
-  if (pts.length) pts.push({ t: simT, Q: 0 });
-  return pts;
-}
-
-// ── Dashboard ────────────────────────────────────────────
-function updateDashboard(Qin, volume) {
-  const vMax    = getVmax();
-  const excess  = Math.max(0, Qin - getQpump());
-  const fillPct = vMax > 0 ? (volume / vMax) * 100 : 0;
-
-  document.getElementById('m-qin').textContent    = Qin.toFixed(2);
-  document.getElementById('m-excess').textContent  = excess.toFixed(2);
-  document.getElementById('m-volume').textContent  = Math.round(volume).toLocaleString();
-  document.getElementById('m-fill').textContent    = Math.round(fillPct);
-
+function updateDashboard(qIn, volume) {
+  const vMax = getVmax();
+  const excess = Math.max(0, qIn - getQpump());
+  const fillPct = vMax > 0 ? volume / vMax * 100 : 0;
+  document.getElementById('m-qin').textContent = qIn.toFixed(2);
+  document.getElementById('m-excess').textContent = excess.toFixed(2);
+  document.getElementById('m-volume').textContent = Math.round(volume).toLocaleString();
+  document.getElementById('m-fill').textContent = Math.round(fillPct);
   const bar = document.getElementById('fill-bar');
-  bar.style.width      = `${Math.min(100, fillPct)}%`;
-  bar.style.background =
-    fillPct >= 90 ? '#ef4444' :
-    fillPct >= 75 ? '#f97316' :
-    fillPct >= 50 ? '#eab308' : 'var(--blue)';
+  bar.style.width = `${Math.min(100, fillPct)}%`;
+  bar.style.background = fillPct >= 90 ? '#ef4444' : fillPct >= 75 ? '#f97316' : fillPct >= 50 ? '#eab308' : 'var(--blue)';
   bar.parentElement.setAttribute('aria-valuenow', Math.round(fillPct));
 }
 
-// ── Tank SVG animation ───────────────────────────────────
-function updateTankViz(f) {
-  f = Math.max(0, Math.min(1, f));
-  const totalH = 290, topY = 20;
-  const waterH = f * totalH;
-  const waterY = topY + totalH - waterH;
-
-  const wb = document.getElementById('water-body');
-  wb.setAttribute('y', waterY);
-  wb.setAttribute('height', waterH);
-
-  const top = document.getElementById('wg-top');
-  const bot = document.getElementById('wg-bot');
-  if      (f >= 0.9)  { top.setAttribute('stop-color','#fca5a5'); bot.setAttribute('stop-color','#dc2626'); }
-  else if (f >= 0.75) { top.setAttribute('stop-color','#fdba74'); bot.setAttribute('stop-color','#ea580c'); }
-  else if (f >= 0.5)  { top.setAttribute('stop-color','#fde68a'); bot.setAttribute('stop-color','#d97706'); }
-  else                { top.setAttribute('stop-color','#38bdf8'); bot.setAttribute('stop-color','#0369a1'); }
-
-  document.getElementById('warn-overlay').setAttribute('opacity', f >= 0.85 ? '1' : '0');
-  document.getElementById('tank-pct').textContent    = `${Math.round(f * 100)}%`;
-  document.getElementById('tank-status').textContent =
-    f === 0   ? 'Empty'         :
-    f < 0.5   ? 'Filling'       :
-    f < 0.75  ? 'Half Full'     :
-    f < 0.9   ? 'High Level'    : '⚠ Overflow Risk';
+function updateResultStrip() {
+  const sf = getNum('safety-factor', 1.15);
+  const factored = maxTankVolume * sf;
+  const pump = getQpump();
+  const emptyHours = pump > 0 ? factored / pump / 3600 : 0;
+  document.getElementById('max-volume').textContent = `${Math.round(maxTankVolume).toLocaleString()} m³`;
+  document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
+  document.getElementById('empty-time').textContent = `${emptyHours.toFixed(1)} hr`;
+  document.getElementById('tank-check').textContent = factored > getVmax() ? 'Insufficient' : 'OK';
 }
 
-// ── Chart.js ─────────────────────────────────────────────
+function updateTankViz(f) {
+  f = Math.max(0, Math.min(1, f || 0));
+  const totalH = 290;
+  const topY = 20;
+  const waterH = f * totalH;
+  document.getElementById('water-body').setAttribute('y', topY + totalH - waterH);
+  document.getElementById('water-body').setAttribute('height', waterH);
+  const top = document.getElementById('wg-top');
+  const bot = document.getElementById('wg-bot');
+  if (f >= 0.9) { top.setAttribute('stop-color', '#fca5a5'); bot.setAttribute('stop-color', '#dc2626'); }
+  else if (f >= 0.75) { top.setAttribute('stop-color', '#fdba74'); bot.setAttribute('stop-color', '#ea580c'); }
+  else if (f >= 0.5) { top.setAttribute('stop-color', '#fde68a'); bot.setAttribute('stop-color', '#d97706'); }
+  else { top.setAttribute('stop-color', '#38bdf8'); bot.setAttribute('stop-color', '#0369a1'); }
+  document.getElementById('warn-overlay').setAttribute('opacity', f >= 0.85 ? '1' : '0');
+  document.getElementById('tank-pct').textContent = `${Math.round(f * 100)}%`;
+  document.getElementById('tank-status').textContent = f === 0 ? 'Empty' : f < 0.5 ? 'Filling' : f < 0.75 ? 'Half Full' : f < 0.9 ? 'High Level' : '⚠ Overflow Risk';
+}
+
 function initChart() {
   const ctx = document.getElementById('sim-chart').getContext('2d');
   chart = new Chart(ctx, {
@@ -301,75 +302,37 @@ function initChart() {
     data: {
       labels: [],
       datasets: [
-        {
-          label: 'Inflow Q_in (m³/s)',
-          data: [], borderColor: '#0ea5e9',
-          borderWidth: 2.5, fill: false, tension: 0.4,
-          pointRadius: 0, yAxisID: 'yFlow',
-        },
-        {
-          label: 'Pump Capacity (m³/s)',
-          data: [], borderColor: '#f97316',
-          borderWidth: 2, borderDash: [6,4],
-          fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow',
-        },
-        {
-          label: 'Tank Fill (%)',
-          data: [], borderColor: '#22d3ee',
-          backgroundColor: 'rgba(34,211,238,0.12)',
-          borderWidth: 2, fill: true, tension: 0.4,
-          pointRadius: 0, yAxisID: 'yFill',
-        },
-      ],
+        { label: 'Inflow Q_in (m³/s)', data: [], borderColor: '#0ea5e9', borderWidth: 2.5, fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFlow' },
+        { label: 'Pump Capacity (m³/s)', data: [], borderColor: '#f97316', borderWidth: 2, borderDash: [6,4], fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow' },
+        { label: 'Tank Fill (%)', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', borderWidth: 2, fill: true, tension: 0.35, pointRadius: 0, yAxisID: 'yFill' }
+      ]
     },
     options: {
       animation: false,
       responsive: true,
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: 'index' },
-      plugins: {
-        legend: { position: 'top', labels: { usePointStyle: true, font: { size: 12 } } },
-        tooltip: {
-          callbacks: {
-            label: ctx => ctx.datasetIndex === 2
-              ? ` Fill: ${ctx.parsed.y.toFixed(1)}%`
-              : ` ${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y.toFixed(2)} m³/s`,
-          },
-        },
-      },
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true } } },
       scales: {
-        x: {
-          title: { display: true, text: 'Time (min)', font: { size: 12 } },
-          ticks: { maxTicksLimit: 10 },
-        },
-        yFlow: {
-          type: 'linear', position: 'left', min: 0,
-          title: { display: true, text: 'Flow Rate (m³/s)', font: { size: 12 } },
-          grid: { color: 'rgba(0,0,0,0.05)' },
-        },
-        yFill: {
-          type: 'linear', position: 'right', min: 0, max: 100,
-          title: { display: true, text: 'Tank Fill (%)', font: { size: 12 } },
-          grid: { drawOnChartArea: false },
-        },
-      },
-    },
+        x: { title: { display: true, text: 'Time (min)' }, ticks: { maxTicksLimit: 10 } },
+        yFlow: { type: 'linear', position: 'left', min: 0, title: { display: true, text: 'Flow Rate (m³/s)' } },
+        yFill: { type: 'linear', position: 'right', min: 0, max: 100, title: { display: true, text: 'Tank Fill (%)' }, grid: { drawOnChartArea: false } }
+      }
+    }
   });
 }
 
-function pushChartPoint(tMin, Qin, volume) {
+function pushChartPoint(tMin, qIn, volume) {
   const now = performance.now();
-  if (now - lastChartPush < 250) return; // throttle to 4 fps
+  if (now - lastChartPush < 250) return;
   lastChartPush = now;
-
   if (chart.data.labels.length > 400) {
     chart.data.labels.shift();
     chart.data.datasets.forEach(ds => ds.data.shift());
   }
-
-  const fill = getVmax() > 0 ? Math.min(100, (volume / getVmax()) * 100) : 0;
+  const fill = getVmax() > 0 ? Math.min(100, volume / getVmax() * 100) : 0;
   chart.data.labels.push(tMin.toFixed(1));
-  chart.data.datasets[0].data.push(Qin);
+  chart.data.datasets[0].data.push(qIn);
   chart.data.datasets[1].data.push(getQpump());
   chart.data.datasets[2].data.push(fill);
   chart.update('none');
@@ -378,51 +341,28 @@ function pushChartPoint(tMin, Qin, volume) {
 function resetChart() {
   if (!chart) return;
   chart.data.labels = [];
-  chart.data.datasets.forEach(ds => (ds.data = []));
+  chart.data.datasets.forEach(ds => { ds.data = []; });
   chart.update('none');
   lastChartPush = 0;
 }
 
-// ── Helpers ──────────────────────────────────────────────
-function getQpump() { return Number(document.getElementById('qpump-sim').value) || 1.9; }
-function getVmax()  { return Number(document.getElementById('vmax').value)      || 15000; }
+function updateTimeText() {
+  const h = Math.floor(simTime / 3600);
+  const m = Math.floor((simTime % 3600) / 60);
+  document.getElementById('sim-time').textContent = h > 0 ? `T = ${h}:${String(m).padStart(2, '0')}` : `T = ${m}:00`;
+}
+
+function getNum(id, fallback) {
+  const el = document.getElementById(id);
+  const n = Number(el.value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getQpump() { return getNum('qpump-lps', 1900) / 1000; }
+function getVmax() { return getNum('vmax', 15000); }
 
 function setStatus(text, cls) {
-  const b = document.getElementById('status-badge');
-  b.textContent = text;
-  b.className   = 'status-badge' + (cls ? ' ' + cls : '');
-}
-
-// ── Manual Calculator ─────────────────────────────────────
-function bindCalculator() {
-  document.getElementById('calc-btn').addEventListener('click', calculateStorage);
-  ['qin','qpump','duration','factor'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => {
-      if (e.key === 'Enter') calculateStorage();
-    });
-  });
-}
-
-function getNumber(id) {
-  const raw = document.getElementById(id).value.trim();
-  const n   = Number(raw);
-  return raw === '' || isNaN(n) ? NaN : n;
-}
-
-function calculateStorage() {
-  const qin = getNumber('qin'), qpump = getNumber('qpump');
-  const dur = getNumber('duration'), sf = getNumber('factor');
-  const vEl = document.getElementById('volume'), mEl = document.getElementById('message');
-
-  if ([qin,qpump,dur,sf].some(isNaN) || qin<=0 || qpump<0 || dur<=0 || sf<=0) {
-    vEl.textContent = '—'; mEl.textContent = 'Please enter valid positive values for all fields.'; return;
-  }
-  const excess = qin - qpump;
-  if (excess <= 0) {
-    vEl.textContent = '0 m³';
-    mEl.textContent = 'Pump capacity meets or exceeds peak inflow — no retention storage required.'; return;
-  }
-  const vol = excess * (dur * 60) * sf;
-  vEl.textContent = `${Math.round(vol).toLocaleString()} m³`;
-  mEl.textContent = `Excess flow: ${excess.toFixed(2)} m³/s — Duration: ${dur} min — Safety factor: ×${sf.toFixed(2)}`;
+  const badge = document.getElementById('status-badge');
+  badge.textContent = text;
+  badge.className = 'status-badge' + (cls ? ` ${cls}` : '');
 }
