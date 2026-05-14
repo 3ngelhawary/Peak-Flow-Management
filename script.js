@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initChart();
   bindSimControls();
   bindSliders();
+  switchMethod();
 });
 
 // ── Slider output ───────────────────────────────────────
@@ -167,41 +168,59 @@ function buildRationalHydrograph() {
 }
 
 function buildScsHydrograph() {
-  const depthMm = Number(document.getElementById('storm-depth').value)   || 50;
-  const durMin  = Number(document.getElementById('storm-duration').value) || 60;
-  const areaHa  = Number(document.getElementById('area').value)          || 50;
+  const depthMm = Number(document.getElementById('storm-depth').value) || 50;
+  const areaHa  = Number(document.getElementById('area').value)        || 50;
   const cn      = Math.max(30, Math.min(98, Number(document.getElementById('curve-number').value) || 75));
 
   const sMm = (25400 / cn) - 254;
   const iaMm = 0.2 * sMm;
-  const dt = 30;
-  const totalT = durMin * 60;
+  const dt = 300;
+  const totalT = 24 * 60 * 60;
   const areaM2 = areaHa * 10000;
+  const totalRunoffMm = getScsRunoffDepth(depthMm, iaMm, sMm);
   const pts = [];
   let prevRunoffMm = 0;
 
-  for (let t = 0; t <= totalT + dt; t += dt) {
-    const ratio = Math.max(0, Math.min(1, t / totalT));
-    const cumulativeRainMm = depthMm * scsCumulativeRatio(ratio);
+  for (let t = 0; t <= totalT; t += dt) {
+    const hour = t / 3600;
+    const cumulativeRainMm = depthMm * scsType2CumulativeRatio(hour);
     const cumulativeRunoffMm = getScsRunoffDepth(cumulativeRainMm, iaMm, sMm);
     const incrementalRunoffMm = Math.max(0, cumulativeRunoffMm - prevRunoffMm);
     const incrementalVolume = (incrementalRunoffMm / 1000) * areaM2;
     const Q = incrementalVolume / dt;
-    const totalRunoffMm = getScsRunoffDepth(depthMm, iaMm, sMm);
     const cumPct = totalRunoffMm > 0 ? (cumulativeRunoffMm / totalRunoffMm) * 100 : 0;
 
     pts.push({ t, Q, cumPct: Math.max(0, Math.min(100, cumPct)) });
     prevRunoffMm = cumulativeRunoffMm;
   }
 
-  pts.push({ t: totalT + (6 * dt), Q: 0, cumPct: 100 });
+  pts.push({ t: totalT + dt, Q: 0, cumPct: 100 });
   return pts;
 }
 
-function scsCumulativeRatio(x) {
-  if (x <= 0) return 0;
-  if (x >= 1) return 1;
-  return 1 / (1 + Math.exp(-10 * (x - 0.5)));
+const SCS_TYPE_II_24HR = [
+  [0, 0.000], [2, 0.022], [4, 0.048], [6, 0.080],
+  [8, 0.120], [9, 0.147], [10, 0.181], [11, 0.235],
+  [11.5, 0.283], [11.75, 0.357], [12, 0.663],
+  [12.25, 0.735], [12.5, 0.772], [13, 0.820],
+  [14, 0.886], [15, 0.928], [16, 0.953], [18, 0.981],
+  [20, 0.993], [22, 0.998], [24, 1.000],
+];
+
+function scsType2CumulativeRatio(hour) {
+  if (hour <= 0) return 0;
+  if (hour >= 24) return 1;
+
+  for (let i = 1; i < SCS_TYPE_II_24HR.length; i++) {
+    const p0 = SCS_TYPE_II_24HR[i - 1];
+    const p1 = SCS_TYPE_II_24HR[i];
+    if (hour <= p1[0]) {
+      const a = (hour - p0[0]) / (p1[0] - p0[0]);
+      return p0[1] + a * (p1[1] - p0[1]);
+    }
+  }
+
+  return 1;
 }
 
 function getScsRunoffDepth(pMm, iaMm, sMm) {
@@ -213,12 +232,32 @@ function getScsRunoffDepth(pMm, iaMm, sMm) {
 function switchMethod() {
   const method = document.getElementById('method-select').value;
   const isScs = method === 'scs';
+  const durationField = document.getElementById('duration-field');
+  const durationSelect = document.getElementById('storm-duration');
+
   document.getElementById('rational-fields').classList.toggle('hidden', isScs);
   document.getElementById('scs-fields').classList.toggle('hidden', !isScs);
-  document.getElementById('method-pill').textContent = isScs ? 'SCS Curve Number' : 'Rational Method';
+  document.getElementById('method-pill').textContent = isScs ? 'SCS Type II 24-hr' : 'Rational Method';
   document.getElementById('method-note').textContent = isScs
-    ? 'SCS uses storm depth and Curve Number to generate cumulative runoff over the storm duration.'
-    : 'Rational uses rainfall intensity and runoff coefficient C to calculate peak flow.';
+    ? 'SCS uses storm depth and Curve Number with a fixed 24-hour Type II dimensionless storm curve.'
+    : 'Rational uses rainfall intensity, duration, and runoff coefficient C to calculate peak flow.';
+
+  if (isScs) {
+    durationField.firstChild.textContent = 'Storm Duration Fixed for SCS';
+    durationSelect.innerHTML = '<option value="1440" selected>24 hours</option>';
+    durationSelect.disabled = true;
+  } else {
+    durationField.firstChild.textContent = 'Storm Duration';
+    durationSelect.disabled = false;
+    durationSelect.innerHTML = [
+      '<option value="30">30 min</option>',
+      '<option value="60" selected>1 hour</option>',
+      '<option value="120">2 hours</option>',
+      '<option value="180">3 hours</option>',
+      '<option value="360">6 hours</option>',
+    ].join('');
+  }
+
   resetSim();
 }
 

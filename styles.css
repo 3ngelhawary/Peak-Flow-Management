@@ -462,3 +462,16 @@ footer strong { color: #8b0000; font-weight: 1000; background: #fff; padding: 7p
 @media (max-width: 850px) {
   .method-select { grid-template-columns: 1fr; }
 }
+
+.fixed-duration-note {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.25);
+  color: #581c87;
+  font-weight: 900;
+  font-size: 13px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
