@@ -2,71 +2,71 @@
 
 // ── State ───────────────────────────────────────────────
 let chart      = null;
-let hydrograph = [];   // [{t: seconds, Q: m³/s, cumPct?: number}]
+let hydrograph = [];   // [{t: seconds, Q: m³/s}]
 let rafId      = null;
 let lastTs     = null;
 let simTime    = 0;    // simulation seconds elapsed
 let tankVolume = 0;    // m³
-let maxTankVolume = 0; // maximum factored volume reached during simulation
 let simRunning = false;
 let simSpeed   = 300;  // simulation-seconds per real-second
 let lastChartPush = 0;
-let activeMethod = 'rational';
 
 // ── Boot ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initChart();
   bindSimControls();
   bindSliders();
-  switchMethod();
+  bindCalculator();
 });
 
-// ── Slider output ───────────────────────────────────────
+// ── Slider live output ──────────────────────────────────
 function bindSliders() {
-  bindRangeValuePair('intensity', 'intensity-val', 0);
-  bindRangeValuePair('storm-depth', 'depth-val', 0);
-  bindRangeValuePair('runoff-c', 'c-val', 2);
-  bindRangeValuePair('curve-number', 'cn-val', 0);
+  const intensity = document.getElementById('intensity');
+  const intOut    = document.getElementById('intensity-val');
+  intensity.addEventListener('input', () => { intOut.value = `${intensity.value} mm/hr`; });
+
+  const coeffEl  = document.getElementById('runoff-c');
+  const coeffOut = document.getElementById('c-val');
+  coeffEl.addEventListener('input', () => { coeffOut.value = Number(coeffEl.value).toFixed(2); });
 }
 
-function bindRangeValuePair(rangeId, valueId, decimals) {
-  const rangeEl = document.getElementById(rangeId);
-  const valueEl = document.getElementById(valueId);
-
-  const format = value => decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
-
-  const update = source => {
-    const min = Number(rangeEl.min);
-    const max = Number(rangeEl.max);
-    let value = Number(source.value);
-    if (Number.isNaN(value)) value = min;
-    value = Math.max(min, Math.min(max, value));
-    rangeEl.value = value;
-    valueEl.value = format(value);
-  };
-
-  rangeEl.addEventListener('input', () => update(rangeEl));
-  valueEl.addEventListener('input', () => update(valueEl));
-}
-
-// ── Simulation controls ─────────────────────────────────
+// ── Tab switching ────────────────────────────────────────
 function bindSimControls() {
+  document.getElementById('tab-synthetic').addEventListener('click', () => switchTab('synthetic'));
+  document.getElementById('tab-live').addEventListener('click',      () => switchTab('live'));
+
   document.getElementById('play-btn').addEventListener('click',  startSim);
   document.getElementById('pause-btn').addEventListener('click', pauseSim);
   document.getElementById('reset-btn').addEventListener('click', resetSim);
-  document.getElementById('method-select').addEventListener('change', switchMethod);
 
   document.querySelectorAll('input[name="simspeed"]').forEach(r => {
     r.addEventListener('change', () => { simSpeed = Number(r.value); });
   });
 
+  document.getElementById('geo-btn').addEventListener('click',   getLocation);
+  document.getElementById('fetch-btn').addEventListener('click', fetchForecast);
+}
+
+function switchTab(mode) {
+  const isSynth = mode === 'synthetic';
+  document.getElementById('panel-synthetic').classList.toggle('hidden', !isSynth);
+  document.getElementById('panel-live').classList.toggle('hidden',      isSynth);
+  document.getElementById('tab-synthetic').classList.toggle('tab-active', isSynth);
+  document.getElementById('tab-live').classList.toggle('tab-active',      !isSynth);
+  document.getElementById('tab-synthetic').setAttribute('aria-selected', isSynth);
+  document.getElementById('tab-live').setAttribute('aria-selected',      !isSynth);
 }
 
 // ── Simulation engine ────────────────────────────────────
 function startSim() {
-  hydrograph = buildSyntheticHydrograph();
+  const livePanel = document.getElementById('panel-live');
+  const isLive    = !livePanel.classList.contains('hidden');
+
+  if (!isLive || hydrograph.length === 0) {
+    hydrograph = buildSyntheticHydrograph();
+  }
   if (hydrograph.length === 0) {
-    setStatus('No hydrograph data. Configure storm parameters.', 'warning');
+    setStatus('No hydrograph data. Configure parameters or fetch live forecast.', 'warning');
     return;
   }
 
@@ -89,7 +89,7 @@ function pauseSim() {
 function resetSim() {
   simRunning = false;
   cancelAnimationFrame(rafId);
-  lastTs = null; simTime = 0; tankVolume = 0; maxTankVolume = 0;
+  lastTs = null; simTime = 0; tankVolume = 0;
   document.getElementById('play-btn').disabled  = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0);
@@ -110,7 +110,6 @@ function tick(ts) {
   const maxT = hydrograph[hydrograph.length - 1]?.t ?? 0;
   if (simTime >= maxT) {
     simTime = maxT;
-    maxTankVolume = Math.max(maxTankVolume, tankVolume);
     updateDashboard(0, tankVolume);
     updateTankViz(tankVolume / getVmax());
     pushChartPoint(simTime / 60, 0, tankVolume);
@@ -122,11 +121,8 @@ function tick(ts) {
   const Qpump  = getQpump();
   const vMax   = getVmax();
   const net    = Qin - Qpump;
-  const sf     = getSafetyFactor();
-  const volumeDelta = net > 0 ? net * simDelta * sf : net * simDelta;
 
-  tankVolume = Math.max(0, Math.min(vMax, tankVolume + volumeDelta));
-  maxTankVolume = Math.max(maxTankVolume, tankVolume);
+  tankVolume = Math.max(0, Math.min(vMax, tankVolume + net * simDelta));
 
   const fill = tankVolume / vMax;
   updateDashboard(Qin, tankVolume);
@@ -153,125 +149,29 @@ function endSim() {
   setStatus('Simulation complete', 'done');
 }
 
-// -- Hydrograph builders ---------------------------------
+// ── SCS Triangular Hydrograph (Rational Method peak) ────
 function buildSyntheticHydrograph() {
-  activeMethod = document.getElementById('method-select').value;
-  return activeMethod === 'scs' ? buildScsHydrograph() : buildRationalHydrograph();
-}
-
-function buildRationalHydrograph() {
-  const iMmHr  = Number(document.getElementById('intensity-val').value) || 50;
+  const iMmHr  = Number(document.getElementById('intensity').value)     || 50;
   const durMin = Number(document.getElementById('storm-duration').value) || 60;
   const areaHa = Number(document.getElementById('area').value)          || 50;
-  const C      = Number(document.getElementById('c-val').value)      || 0.75;
+  const C      = Number(document.getElementById('runoff-c').value)      || 0.75;
 
+  // Peak flow via Rational Method: Q = C·i·A / 360  (A in ha, i in mm/hr → m³/s)
   const Qpeak = (C * iMmHr * areaHa) / 360;
-  const Tp = (durMin / 2) * 60;
-  const Tb = 2.67 * Tp;
+
+  // SCS triangular hydrograph
+  const Tp = (durMin / 2) * 60; // time to peak (seconds)
+  const Tb = 2.67 * Tp;         // base time (seconds)
 
   const pts = [];
-  const dt  = 30;
+  const dt  = 30; // 30-second steps
   for (let t = 0; t <= Tb + dt; t += dt) {
     let Q = 0;
-    if (t <= Tp) Q = Qpeak * (t / Tp);
+    if (t <= Tp)      Q = Qpeak * (t / Tp);
     else if (t <= Tb) Q = Qpeak * (Tb - t) / (Tb - Tp);
-    pts.push({ t, Q: Math.max(0, Q), cumPct: null });
+    pts.push({ t, Q: Math.max(0, Q) });
   }
   return pts;
-}
-
-function buildScsHydrograph() {
-  const depthMm = Number(document.getElementById('depth-val').value) || 50;
-  const areaHa  = Number(document.getElementById('area').value)        || 50;
-  const cn      = Math.max(30, Math.min(98, Number(document.getElementById('cn-val').value) || 75));
-
-  const sMm = (25400 / cn) - 254;
-  const iaMm = 0.2 * sMm;
-  const dt = 300;
-  const totalT = 24 * 60 * 60;
-  const areaM2 = areaHa * 10000;
-  const totalRunoffMm = getScsRunoffDepth(depthMm, iaMm, sMm);
-  const pts = [];
-  let prevRunoffMm = 0;
-
-  for (let t = 0; t <= totalT; t += dt) {
-    const hour = t / 3600;
-    const cumulativeRainMm = depthMm * scsType2CumulativeRatio(hour);
-    const cumulativeRunoffMm = getScsRunoffDepth(cumulativeRainMm, iaMm, sMm);
-    const incrementalRunoffMm = Math.max(0, cumulativeRunoffMm - prevRunoffMm);
-    const incrementalVolume = (incrementalRunoffMm / 1000) * areaM2;
-    const Q = incrementalVolume / dt;
-    const cumPct = totalRunoffMm > 0 ? (cumulativeRunoffMm / totalRunoffMm) * 100 : 0;
-
-    pts.push({ t, Q, cumPct: Math.max(0, Math.min(100, cumPct)) });
-    prevRunoffMm = cumulativeRunoffMm;
-  }
-
-  pts.push({ t: totalT + dt, Q: 0, cumPct: 100 });
-  return pts;
-}
-
-const SCS_TYPE_II_24HR = [
-  [0, 0.000], [2, 0.022], [4, 0.048], [6, 0.080],
-  [8, 0.120], [9, 0.147], [10, 0.181], [11, 0.235],
-  [11.5, 0.283], [11.75, 0.357], [12, 0.663],
-  [12.25, 0.735], [12.5, 0.772], [13, 0.820],
-  [14, 0.886], [15, 0.928], [16, 0.953], [18, 0.981],
-  [20, 0.993], [22, 0.998], [24, 1.000],
-];
-
-function scsType2CumulativeRatio(hour) {
-  if (hour <= 0) return 0;
-  if (hour >= 24) return 1;
-
-  for (let i = 1; i < SCS_TYPE_II_24HR.length; i++) {
-    const p0 = SCS_TYPE_II_24HR[i - 1];
-    const p1 = SCS_TYPE_II_24HR[i];
-    if (hour <= p1[0]) {
-      const a = (hour - p0[0]) / (p1[0] - p0[0]);
-      return p0[1] + a * (p1[1] - p0[1]);
-    }
-  }
-
-  return 1;
-}
-
-function getScsRunoffDepth(pMm, iaMm, sMm) {
-  if (pMm <= iaMm) return 0;
-  const effectiveP = pMm - iaMm;
-  return (effectiveP * effectiveP) / (effectiveP + sMm);
-}
-
-function switchMethod() {
-  const method = document.getElementById('method-select').value;
-  const isScs = method === 'scs';
-  const durationField = document.getElementById('duration-field');
-  const durationSelect = document.getElementById('storm-duration');
-
-  document.getElementById('rational-fields').classList.toggle('hidden', isScs);
-  document.getElementById('scs-fields').classList.toggle('hidden', !isScs);
-  document.getElementById('method-pill').textContent = isScs ? 'SCS Type II 24-hr' : 'Rational Method';
-  document.getElementById('method-note').textContent = isScs
-    ? 'SCS uses storm depth and Curve Number to generate runoff from the Type II cumulative curve.'
-    : 'Rational uses rainfall intensity, duration, and runoff coefficient C to calculate peak flow.';
-
-  if (isScs) {
-    durationField.firstChild.textContent = 'Storm Duration Fixed for SCS';
-    durationSelect.innerHTML = '<option value="1440" selected>24 hours</option>';
-    durationSelect.disabled = true;
-  } else {
-    durationField.firstChild.textContent = 'Storm Duration';
-    durationSelect.disabled = false;
-    durationSelect.innerHTML = [
-      '<option value="30">30 min</option>',
-      '<option value="60" selected>1 hour</option>',
-      '<option value="120">2 hours</option>',
-      '<option value="180">3 hours</option>',
-      '<option value="360">6 hours</option>',
-    ].join('');
-  }
-
-  resetSim();
 }
 
 // ── Interpolate Q from hydrograph at time t (seconds) ───
@@ -290,6 +190,62 @@ function interpolateFlow(t) {
   return 0;
 }
 
+// ── Live forecast via Open-Meteo ─────────────────────────
+function getLocation() {
+  const statusEl = document.getElementById('geo-status');
+  if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
+  statusEl.textContent = 'Locating…';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      document.getElementById('lat-in').value = pos.coords.latitude.toFixed(4);
+      document.getElementById('lon-in').value = pos.coords.longitude.toFixed(4);
+      statusEl.textContent = `📍 ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`;
+    },
+    () => { statusEl.textContent = 'Location access denied.'; }
+  );
+}
+
+async function fetchForecast() {
+  const lat    = parseFloat(document.getElementById('lat-in').value);
+  const lon    = parseFloat(document.getElementById('lon-in').value);
+  const areaHa = Number(document.getElementById('area').value)     || 50;
+  const C      = Number(document.getElementById('runoff-c').value) || 0.75;
+  const statusEl = document.getElementById('geo-status');
+
+  if (isNaN(lat) || isNaN(lon)) { statusEl.textContent = 'Enter valid coordinates first.'; return; }
+  statusEl.textContent = 'Fetching forecast…';
+
+  try {
+    const url  = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    hydrograph = buildLiveHydrograph(data.hourly, areaHa, C);
+    const peakQ = Math.max(...hydrograph.map(p => p.Q));
+    statusEl.textContent = `✓ 48-hr forecast loaded — Peak inflow: ${peakQ.toFixed(2)} m³/s`;
+  } catch (err) {
+    statusEl.textContent = `Fetch error: ${err.message}`;
+  }
+}
+
+function buildLiveHydrograph(hourly, areaHa, C) {
+  const { time, precipitation } = hourly;
+  const now = new Date();
+  const pts = [];
+  let simT  = 0;
+
+  for (let i = 0; i < time.length; i++) {
+    if (new Date(time[i]) < now) continue;
+    const Q = ((C * (precipitation[i] || 0) * areaHa) / 360);
+    pts.push({ t: simT, Q });
+    simT += 3600;
+    if (pts.length >= 24) break;
+  }
+  if (pts.length) pts.push({ t: simT, Q: 0 });
+  return pts;
+}
+
 // ── Dashboard ────────────────────────────────────────────
 function updateDashboard(Qin, volume) {
   const vMax    = getVmax();
@@ -298,8 +254,7 @@ function updateDashboard(Qin, volume) {
 
   document.getElementById('m-qin').textContent    = Qin.toFixed(2);
   document.getElementById('m-excess').textContent  = excess.toFixed(2);
-  document.getElementById('m-volume').textContent  = Math.round(maxTankVolume).toLocaleString();
-  document.getElementById('m-empty-time').textContent = formatEmptyingTime(maxTankVolume, getQpump());
+  document.getElementById('m-volume').textContent  = Math.round(volume).toLocaleString();
   document.getElementById('m-fill').textContent    = Math.round(fillPct);
 
   const bar = document.getElementById('fill-bar');
@@ -353,7 +308,7 @@ function initChart() {
           pointRadius: 0, yAxisID: 'yFlow',
         },
         {
-          label: 'Pump Discharge (m³/s)',
+          label: 'Pump Capacity (m³/s)',
           data: [], borderColor: '#f97316',
           borderWidth: 2, borderDash: [6,4],
           fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow',
@@ -364,12 +319,6 @@ function initChart() {
           backgroundColor: 'rgba(34,211,238,0.12)',
           borderWidth: 2, fill: true, tension: 0.4,
           pointRadius: 0, yAxisID: 'yFill',
-        },
-        {
-          label: 'SCS Cumulative Runoff (%)',
-          data: [], borderColor: '#a855f7',
-          borderWidth: 2, borderDash: [4,4],
-          fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFill',
         },
       ],
     },
@@ -382,8 +331,8 @@ function initChart() {
         legend: { position: 'top', labels: { usePointStyle: true, font: { size: 12 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.datasetIndex >= 2
-              ? ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1) ?? 0}%`
+            label: ctx => ctx.datasetIndex === 2
+              ? ` Fill: ${ctx.parsed.y.toFixed(1)}%`
               : ` ${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y.toFixed(2)} m³/s`,
           },
         },
@@ -423,23 +372,7 @@ function pushChartPoint(tMin, Qin, volume) {
   chart.data.datasets[0].data.push(Qin);
   chart.data.datasets[1].data.push(getQpump());
   chart.data.datasets[2].data.push(fill);
-  chart.data.datasets[3].data.push(getCumulativePercent(tMin * 60));
   chart.update('none');
-}
-
-function getCumulativePercent(t) {
-  if (activeMethod !== 'scs' || !hydrograph.length) return null;
-  if (t <= hydrograph[0].t) return hydrograph[0].cumPct || 0;
-  for (let i = 1; i < hydrograph.length; i++) {
-    if (hydrograph[i].t >= t) {
-      const p0 = hydrograph[i - 1], p1 = hydrograph[i];
-      const span = p1.t - p0.t || 1;
-      const a = (t - p0.t) / span;
-      const c0 = p0.cumPct ?? 0, c1 = p1.cumPct ?? c0;
-      return c0 + a * (c1 - c0);
-    }
-  }
-  return 100;
 }
 
 function resetChart() {
@@ -451,26 +384,45 @@ function resetChart() {
 }
 
 // ── Helpers ──────────────────────────────────────────────
-function getQpump() { return (Number(document.getElementById('qpump-sim').value) || 1900) / 1000; }
+function getQpump() { return Number(document.getElementById('qpump-sim').value) || 1.9; }
 function getVmax()  { return Number(document.getElementById('vmax').value)      || 15000; }
-function getSafetyFactor() { return Number(document.getElementById('sf-sim').value) || 1.0; }
-
-function formatEmptyingTime(volume, qpump) {
-  if (volume <= 0) return '0 min';
-  if (qpump <= 0) return 'N/A';
-
-  const minutes = volume / qpump / 60;
-  if (minutes < 60) return `${Math.ceil(minutes)} min`;
-
-  const hours = minutes / 60;
-  if (hours < 24) return `${hours.toFixed(1)} hr`;
-
-  const days = hours / 24;
-  return `${days.toFixed(1)} d`;
-}
 
 function setStatus(text, cls) {
   const b = document.getElementById('status-badge');
   b.textContent = text;
   b.className   = 'status-badge' + (cls ? ' ' + cls : '');
+}
+
+// ── Manual Calculator ─────────────────────────────────────
+function bindCalculator() {
+  document.getElementById('calc-btn').addEventListener('click', calculateStorage);
+  ['qin','qpump','duration','factor'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') calculateStorage();
+    });
+  });
+}
+
+function getNumber(id) {
+  const raw = document.getElementById(id).value.trim();
+  const n   = Number(raw);
+  return raw === '' || isNaN(n) ? NaN : n;
+}
+
+function calculateStorage() {
+  const qin = getNumber('qin'), qpump = getNumber('qpump');
+  const dur = getNumber('duration'), sf = getNumber('factor');
+  const vEl = document.getElementById('volume'), mEl = document.getElementById('message');
+
+  if ([qin,qpump,dur,sf].some(isNaN) || qin<=0 || qpump<0 || dur<=0 || sf<=0) {
+    vEl.textContent = '—'; mEl.textContent = 'Please enter valid positive values for all fields.'; return;
+  }
+  const excess = qin - qpump;
+  if (excess <= 0) {
+    vEl.textContent = '0 m³';
+    mEl.textContent = 'Pump capacity meets or exceeds peak inflow — no retention storage required.'; return;
+  }
+  const vol = excess * (dur * 60) * sf;
+  vEl.textContent = `${Math.round(vol).toLocaleString()} m³`;
+  mEl.textContent = `Excess flow: ${excess.toFixed(2)} m³/s — Duration: ${dur} min — Safety factor: ×${sf.toFixed(2)}`;
 }
