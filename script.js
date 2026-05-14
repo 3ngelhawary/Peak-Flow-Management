@@ -1,35 +1,54 @@
-// File: script.js
+'use strict';
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('calc-btn').addEventListener('click', calculateStorage);
+
+  ['qin', 'qpump', 'duration', 'factor'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') calculateStorage();
+    });
+  });
+});
+
 function getNumber(id) {
-  return Number(document.getElementById(id).value);
+  const raw = document.getElementById(id).value.trim();
+  const num = Number(raw);
+  return raw === '' || isNaN(num) ? NaN : num;
 }
 
 function calculateStorage() {
-  const qin = getNumber("qin");
-  const qpump = getNumber("qpump");
-  const duration = getNumber("duration");
-  const factor = getNumber("factor");
-  const volumeBox = document.getElementById("volume");
-  const message = document.getElementById("message");
+  const qin      = getNumber('qin');
+  const qpump    = getNumber('qpump');
+  const duration = getNumber('duration');
+  const factor   = getNumber('factor');
 
-  if (qin <= 0 || qpump < 0 || duration <= 0 || factor <= 0) {
-    volumeBox.textContent = "-";
-    message.textContent = "Please enter valid positive values.";
+  const volumeEl  = document.getElementById('volume');
+  const messageEl = document.getElementById('message');
+
+  const invalid =
+    [qin, qpump, duration, factor].some(isNaN) ||
+    qin <= 0 || qpump < 0 || duration <= 0 || factor <= 0;
+
+  if (invalid) {
+    volumeEl.textContent  = '—';
+    messageEl.textContent = 'Please enter valid positive values for all fields.';
     return;
   }
 
   const excessFlow = qin - qpump;
 
   if (excessFlow <= 0) {
-    volumeBox.textContent = "0 m³";
-    message.textContent = "Pump capacity is enough for the entered peak flow.";
+    volumeEl.textContent  = '0 m³';
+    messageEl.textContent =
+      'Pump capacity meets or exceeds the peak inflow — no retention storage required.';
     return;
   }
 
-  const durationSeconds = duration * 60;
-  const volume = excessFlow * durationSeconds * factor;
+  const volume = excessFlow * (duration * 60) * factor;
 
-  volumeBox.textContent = `${volume.toFixed(0)} m³`;
-  message.textContent =
-    `Excess flow = ${excessFlow.toFixed(2)} m³/s. ` +
-    `Storage includes safety factor ${factor.toFixed(2)}.`;
+  volumeEl.textContent  = `${Math.round(volume).toLocaleString()} m³`;
+  messageEl.textContent =
+    `Excess flow: ${excessFlow.toFixed(2)} m³/s — ` +
+    `Duration: ${duration} min — ` +
+    `Safety factor: ×${factor.toFixed(2)}`;
 }
