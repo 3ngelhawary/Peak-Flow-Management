@@ -43,7 +43,7 @@ function bindLinkedInputs() {
   linkRangeAndPill('runoff-c', 'c-val', 0.05, 1, 2);
   linkRangeAndPill('storm-depth', 'storm-depth-val', 5, 200, 0);
   linkRangeAndPill('curve-number', 'cn-val', 30, 98, 0);
-  linkRangeAndPill('tc', 'tc-val', 10, 300, 0);
+  linkRangeAndPill('tc', 'tc-val', 10, 1000, 0);
 }
 
 function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
