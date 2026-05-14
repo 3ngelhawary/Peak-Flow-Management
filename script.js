@@ -237,7 +237,7 @@ function initChart() {
           pointRadius: 0, yAxisID: 'yFlow',
         },
         {
-          label: 'Pump Capacity (m³/s)',
+          label: 'Pump Discharge (m³/s)',
           data: [], borderColor: '#f97316',
           borderWidth: 2, borderDash: [6,4],
           fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow',
@@ -313,7 +313,7 @@ function resetChart() {
 }
 
 // ── Helpers ──────────────────────────────────────────────
-function getQpump() { return Number(document.getElementById('qpump-sim').value) || 1.9; }
+function getQpump() { return (Number(document.getElementById('qpump-sim').value) || 1900) / 1000; }
 function getVmax()  { return Number(document.getElementById('vmax').value)      || 15000; }
 function getSafetyFactor() { return Number(document.getElementById('sf-sim').value) || 1.0; }
 

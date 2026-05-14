@@ -60,8 +60,8 @@
           <output id="c-val" for="runoff-c">0.75</output>
         </div>
       </label>
-      <label>Pump Capacity (m³/s)
-        <input id="qpump-sim" type="number" step="0.1" min="0" value="1.90" />
+      <label>Pump Discharge (L/sec)
+        <input id="qpump-sim" type="number" step="50" min="0" value="1900" />
       </label>
       <label>Tank Capacity (m³)
         <input id="vmax" type="number" step="500" min="100" value="15000" />
@@ -163,11 +163,13 @@
 
   <section id="concept" class="card" aria-labelledby="concept-heading">
     <h2 id="concept-heading">Concept</h2>
-    <p class="note">The displayed required storage is the maximum factored volume reached during the simulation, not the final remaining volume. Emptying time is calculated from that maximum volume divided by pump capacity.</p>
+    <p class="note">The displayed required storage is the maximum factored volume reached during the simulation, not the final remaining volume. Emptying time is calculated from that maximum volume divided by pump discharge.</p>
+    <p class="note">To determine the best storage duration, run/check several storm durations and select the critical duration: the one that gives the highest Max Factored Volume while keeping overflow risk and emptying time acceptable.</p>
     <p class="equation">Q<sub>peak</sub> = C × i × A / 360</p>
     <p class="equation">V<sub>required</sub> = max[Σ(Q<sub>in</sub> − Q<sub>pump</sub>) × Δt × SF]</p>
     <p><strong>Calculation method:</strong> Rational Method is used to calculate peak inflow. A triangular hydrograph shape is then used to distribute that peak flow over the storm duration for dynamic storage simulation.</p>
     <p><strong>Tank Capacity</strong> is the physical available tank size entered by the user. <strong>Max Factored Volume</strong> is the calculated required storage during the storm, including safety factor. If Max Factored Volume is higher than Tank Capacity, the tank is undersized.</p>
+    <p><strong>Pump Discharge</strong> is entered in L/sec for site use. The simulator converts it internally to m³/s using: m³/s = L/sec ÷ 1000.</p>
   </section>
 
   <section id="checks" class="card" aria-labelledby="checks-heading">
