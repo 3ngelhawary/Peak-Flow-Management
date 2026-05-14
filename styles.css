@@ -1,15 +1,14 @@
-/* File: styles.css */
 :root {
-  --navy: #071b33;
-  --blue: #0ea5e9;
-  --cyan: #22d3ee;
-  --light: #f3f7fb;
-  --text: #1f2937;
-  --white: #ffffff;
+  --navy:   #071b33;
+  --blue:   #0ea5e9;
+  --cyan:   #22d3ee;
+  --light:  #f3f7fb;
+  --text:   #1f2937;
+  --white:  #ffffff;
   --border: #d8e2ef;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
 
@@ -18,13 +17,17 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
   color: var(--text);
   background: var(--light);
+  line-height: 1.6;
 }
+
+/* ── Header / Nav ─────────────────────────────────────── */
 
 header {
   position: sticky;
   top: 0;
   background: var(--navy);
   z-index: 10;
+  box-shadow: 0 2px 12px rgba(7, 27, 51, 0.4);
 }
 
 nav {
@@ -40,6 +43,8 @@ nav {
 .logo {
   color: var(--white);
   font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.3px;
   margin-right: auto;
 }
 
@@ -47,7 +52,17 @@ nav a {
   color: #dbeafe;
   text-decoration: none;
   font-weight: 600;
+  font-size: 15px;
+  transition: color 0.15s;
 }
+
+nav a:hover,
+nav a:focus-visible {
+  color: var(--cyan);
+  outline: none;
+}
+
+/* ── Hero ─────────────────────────────────────────────── */
 
 .hero {
   padding: 80px 20px;
@@ -56,32 +71,45 @@ nav a {
 }
 
 .hero h1,
-.hero p,
-main {
+.hero p {
   max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
 }
 
 .hero h1 {
-  font-size: clamp(32px, 5vw, 56px);
-  line-height: 1.1;
+  margin-top: 0;
+  font-size: clamp(28px, 5vw, 52px);
+  line-height: 1.15;
 }
 
 .hero p {
-  font-size: 20px;
-  color: #dbeafe;
+  font-size: 19px;
+  color: #bfdbfe;
+  margin-bottom: 0;
 }
 
-main { padding: 40px 20px; }
+/* ── Main / Layout ────────────────────────────────────── */
+
+main {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 40px 20px;
+}
 
 .card {
   background: var(--white);
   border: 1px solid var(--border);
   border-radius: 18px;
-  padding: 24px;
+  padding: 28px 32px;
   margin-bottom: 24px;
-  box-shadow: 0 12px 30px rgba(7, 27, 51, 0.1);
+  box-shadow: 0 8px 24px rgba(7, 27, 51, 0.08);
+}
+
+.card h2 {
+  margin-top: 0;
+  color: var(--navy);
 }
 
 .grid {
@@ -90,6 +118,20 @@ main { padding: 40px 20px; }
   gap: 24px;
 }
 
+/* ── Formula Note ─────────────────────────────────────── */
+
+.note {
+  font-size: 14px;
+  color: #0369a1;
+  background: #f0f9ff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border-left: 3px solid var(--blue);
+  margin: 0 0 20px;
+}
+
+/* ── Calculator Form ──────────────────────────────────── */
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -97,100 +139,186 @@ main { padding: 40px 20px; }
 }
 
 label {
+  display: flex;
+  flex-direction: column;
   font-weight: 700;
+  font-size: 14px;
   color: var(--navy);
 }
 
 input {
+  display: block;
   width: 100%;
   margin-top: 8px;
-  padding: 12px;
-  border: 1px solid var(--border);
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
   border-radius: 10px;
   font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 
 button {
   margin-top: 22px;
-  padding: 14px 22px;
+  padding: 14px 28px;
   border: none;
   border-radius: 12px;
   background: var(--blue);
   color: var(--white);
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 16px;
+  font-family: inherit;
   cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
 }
+
+button:hover {
+  background: #0284c7;
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.35);
+}
+
+button:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ── Result Box ───────────────────────────────────────── */
 
 .result {
   margin-top: 24px;
-  padding: 20px;
+  padding: 20px 24px;
   border-radius: 14px;
   background: #e0f2fe;
+  border: 1px solid #bae6fd;
 }
 
-#volume {
-  font-size: 36px;
+.result h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+output#volume {
+  display: block;
+  font-size: 42px;
   color: var(--navy);
   font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 8px;
 }
+
+#message {
+  margin: 0;
+  font-size: 14px;
+  color: #0369a1;
+}
+
+/* ── Concept Cards ────────────────────────────────────── */
 
 .equation {
   font-size: 28px;
   font-weight: 900;
   color: #0369a1;
+  margin: 12px 0;
+}
+
+/* ── Flow Diagram ─────────────────────────────────────── */
+
+.svg-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 svg {
   width: 100%;
   min-width: 700px;
+  display: block;
 }
 
 rect {
-  fill: #ffffff;
+  fill: var(--white);
   stroke: var(--blue);
-  stroke-width: 3;
-  rx: 12;
+  stroke-width: 2.5;
 }
 
 line,
 path {
   stroke: var(--navy);
-  stroke-width: 3;
+  stroke-width: 2.5;
   fill: none;
   marker-end: url(#arrow);
 }
 
-text {
+svg text {
   text-anchor: middle;
+  font-family: "Segoe UI", Arial, sans-serif;
   font-weight: 700;
   fill: var(--navy);
 }
 
+/* ── Engineering Checks ───────────────────────────────── */
+
 .checks {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .checks span {
   background: #e0f2fe;
-  padding: 10px 14px;
+  color: #0369a1;
+  padding: 8px 16px;
   border-radius: 999px;
   font-weight: 700;
+  font-size: 13px;
+  border: 1px solid #bae6fd;
+  transition: background 0.15s;
 }
+
+.checks span:hover {
+  background: #bae6fd;
+}
+
+/* ── Footer ───────────────────────────────────────────── */
 
 footer {
   text-align: center;
   padding: 24px;
   background: var(--navy);
-  color: white;
+  color: #94a3b8;
+  font-size: 14px;
 }
 
-footer strong { color: #b91c1c; }
+footer p { margin: 0; }
+
+footer strong { color: var(--cyan); }
+
+/* ── Responsive ───────────────────────────────────────── */
 
 @media (max-width: 850px) {
   .grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 20px;
   }
 }
