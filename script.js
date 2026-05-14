@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initChart();
   bindSimControls();
   bindSliders();
-  bindCalculator();
 });
 
 // ── Slider live output ──────────────────────────────────
@@ -62,15 +61,9 @@ function startSim() {
   const livePanel = document.getElementById('panel-live');
   const isLive    = !livePanel.classList.contains('hidden');
 
-  if (isLive && hydrograph.length === 0) {
-    setStatus('No live forecast loaded. Fetch rainfall forecast first.', 'warning');
-    return;
-  }
-
-  if (!isLive) {
+  if (!isLive || hydrograph.length === 0) {
     hydrograph = buildSyntheticHydrograph();
   }
-
   if (hydrograph.length === 0) {
     setStatus('No hydrograph data. Configure parameters or fetch live forecast.', 'warning');
     return;
@@ -127,8 +120,10 @@ function tick(ts) {
   const Qpump  = getQpump();
   const vMax   = getVmax();
   const net    = Qin - Qpump;
+  const sf     = getSafetyFactor();
+  const volumeDelta = net > 0 ? net * simDelta * sf : net * simDelta;
 
-  tankVolume = Math.max(0, Math.min(vMax, tankVolume + net * simDelta));
+  tankVolume = Math.max(0, Math.min(vMax, tankVolume + volumeDelta));
 
   const fill = tankVolume / vMax;
   updateDashboard(Qin, tankVolume);
@@ -228,23 +223,14 @@ async function fetchForecast() {
     const data = await resp.json();
 
     hydrograph = buildLiveHydrograph(data.hourly, areaHa, C);
-    if (hydrograph.length === 0) {
-      statusEl.textContent = 'Forecast loaded, but no future rainfall data was returned.';
-      setStatus('No live hydrograph data available.', 'warning');
-      return;
-    }
-
-    resetSim();
     const peakQ = Math.max(...hydrograph.map(p => p.Q));
     statusEl.textContent = `✓ 48-hr forecast loaded — Peak inflow: ${peakQ.toFixed(2)} m³/s`;
-    setStatus('Live forecast ready — press Start to begin', 'done');
   } catch (err) {
     statusEl.textContent = `Fetch error: ${err.message}`;
   }
 }
 
 function buildLiveHydrograph(hourly, areaHa, C) {
-  if (!hourly || !Array.isArray(hourly.time) || !Array.isArray(hourly.precipitation)) return [];
   const { time, precipitation } = hourly;
   const now = new Date();
   const pts = [];
@@ -310,13 +296,7 @@ function updateTankViz(f) {
 
 // ── Chart.js ─────────────────────────────────────────────
 function initChart() {
-  const canvas = document.getElementById('sim-chart');
-  if (!canvas || typeof Chart === 'undefined') {
-    setStatus('Chart library not loaded. Simulation controls remain available.', 'warning');
-    return;
-  }
-
-  const ctx = canvas.getContext('2d');
+  const ctx = document.getElementById('sim-chart').getContext('2d');
   chart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -379,7 +359,6 @@ function initChart() {
 }
 
 function pushChartPoint(tMin, Qin, volume) {
-  if (!chart) return;
   const now = performance.now();
   if (now - lastChartPush < 250) return; // throttle to 4 fps
   lastChartPush = now;
@@ -408,43 +387,10 @@ function resetChart() {
 // ── Helpers ──────────────────────────────────────────────
 function getQpump() { return Number(document.getElementById('qpump-sim').value) || 1.9; }
 function getVmax()  { return Number(document.getElementById('vmax').value)      || 15000; }
+function getSafetyFactor() { return Number(document.getElementById('sf-sim').value) || 1.0; }
 
 function setStatus(text, cls) {
   const b = document.getElementById('status-badge');
   b.textContent = text;
   b.className   = 'status-badge' + (cls ? ' ' + cls : '');
-}
-
-// ── Manual Calculator ─────────────────────────────────────
-function bindCalculator() {
-  document.getElementById('calc-btn').addEventListener('click', calculateStorage);
-  ['qin','qpump','duration','factor'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => {
-      if (e.key === 'Enter') calculateStorage();
-    });
-  });
-}
-
-function getNumber(id) {
-  const raw = document.getElementById(id).value.trim();
-  const n   = Number(raw);
-  return raw === '' || isNaN(n) ? NaN : n;
-}
-
-function calculateStorage() {
-  const qin = getNumber('qin'), qpump = getNumber('qpump');
-  const dur = getNumber('duration'), sf = getNumber('factor');
-  const vEl = document.getElementById('volume'), mEl = document.getElementById('message');
-
-  if ([qin,qpump,dur,sf].some(isNaN) || qin<=0 || qpump<0 || dur<=0 || sf<=0) {
-    vEl.textContent = '—'; mEl.textContent = 'Please enter valid positive values for all fields.'; return;
-  }
-  const excess = qin - qpump;
-  if (excess <= 0) {
-    vEl.textContent = '0 m³';
-    mEl.textContent = 'Pump capacity meets or exceeds peak inflow — no retention storage required.'; return;
-  }
-  const vol = excess * (dur * 60) * sf;
-  vEl.textContent = `${Math.round(vol).toLocaleString()} m³`;
-  mEl.textContent = `Excess flow: ${excess.toFixed(2)} m³/s — Duration: ${dur} min — Safety factor: ×${sf.toFixed(2)}`;
 }

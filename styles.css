@@ -190,7 +190,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important;
 /* ── Catchment Grid ───────────────────────────────────── */
 
 .catchment-grid {
-  display: grid; grid-template-columns: repeat(4,1fr);
+  display: grid; grid-template-columns: repeat(5,1fr);
   gap: 18px; margin-bottom: 20px;
 }
 
@@ -265,16 +265,16 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important;
 /* ── Simulation Visualization ─────────────────────────── */
 
 .sim-viz {
-  display: grid; grid-template-columns: 1fr 210px;
+  display: grid; grid-template-columns: 1fr 130px;
   gap: 24px; align-items: start;
 }
 .chart-wrap {
-  position: relative; height: 370px;
+  position: relative; height: 340px;
   background: var(--white); border: 1px solid var(--border);
   border-radius: 12px; padding: 12px;
 }
 .tank-wrap { text-align: center; }
-.tank-svg  { width: 100%; max-width: 200px; display: block; margin: 0 auto; }
+.tank-svg  { width: 100%; max-width: 120px; min-width: 0; display: block; margin: 0 auto; }
 .tank-caption {
   font-size: 11px; font-weight: 700; color: #6b7280;
   text-transform: uppercase; letter-spacing: 0.06em; margin: 6px 0 0;
@@ -339,7 +339,7 @@ svg text {
 
 footer { text-align: center; padding: 24px; background: var(--navy); color: #94a3b8; font-size: 14px; }
 footer p { margin: 0; }
-footer strong { color: var(--cyan); }
+footer strong { color: #8b0000; font-weight: 900; }
 
 /* ── Responsive ───────────────────────────────────────── */
 
@@ -348,12 +348,6 @@ footer strong { color: var(--cyan); }
   .card { padding: 20px; }
   .sim-viz { grid-template-columns: 1fr; }
   .chart-wrap { height: 280px; }
-  .tank-svg { max-width: 160px; }
+  .tank-svg { max-width: 110px; min-width: 0; }
   .speed-group { margin: 0; }
-}
-
-/* ── Required developer signature ─────────────────────── */
-footer strong {
-  color: #8b0000;
-  font-weight: 900;
 }
