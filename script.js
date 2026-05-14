@@ -2,7 +2,7 @@
 
 // ── State ───────────────────────────────────────────────
 let chart      = null;
-let hydrograph = [];   // [{t: seconds, Q: m³/s}]
+let hydrograph = [];   // [{t: seconds, Q: m³/s, cumPct?: number}]
 let rafId      = null;
 let lastTs     = null;
 let simTime    = 0;    // simulation seconds elapsed
@@ -11,6 +11,7 @@ let maxTankVolume = 0; // maximum factored volume reached during simulation
 let simRunning = false;
 let simSpeed   = 300;  // simulation-seconds per real-second
 let lastChartPush = 0;
+let activeMethod = 'rational';
 
 // ── Boot ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,6 +29,10 @@ function bindSliders() {
   const coeffEl  = document.getElementById('runoff-c');
   const coeffOut = document.getElementById('c-val');
   coeffEl.addEventListener('input', () => { coeffOut.value = Number(coeffEl.value).toFixed(2); });
+
+  const cnEl  = document.getElementById('curve-number');
+  const cnOut = document.getElementById('cn-val');
+  cnEl.addEventListener('input', () => { cnOut.value = String(Math.round(Number(cnEl.value))); });
 }
 
 // ── Simulation controls ─────────────────────────────────
@@ -35,6 +40,7 @@ function bindSimControls() {
   document.getElementById('play-btn').addEventListener('click',  startSim);
   document.getElementById('pause-btn').addEventListener('click', pauseSim);
   document.getElementById('reset-btn').addEventListener('click', resetSim);
+  document.getElementById('method-select').addEventListener('change', switchMethod);
 
   document.querySelectorAll('input[name="simspeed"]').forEach(r => {
     r.addEventListener('change', () => { simSpeed = Number(r.value); });
@@ -133,29 +139,87 @@ function endSim() {
   setStatus('Simulation complete', 'done');
 }
 
-// ── Triangular Hydrograph (Rational Method peak) ────
+// -- Hydrograph builders ---------------------------------
 function buildSyntheticHydrograph() {
+  activeMethod = document.getElementById('method-select').value;
+  return activeMethod === 'scs' ? buildScsHydrograph() : buildRationalHydrograph();
+}
+
+function buildRationalHydrograph() {
   const iMmHr  = Number(document.getElementById('intensity').value)     || 50;
   const durMin = Number(document.getElementById('storm-duration').value) || 60;
   const areaHa = Number(document.getElementById('area').value)          || 50;
   const C      = Number(document.getElementById('runoff-c').value)      || 0.75;
 
-  // Peak flow via Rational Method: Q = C·i·A / 360  (A in ha, i in mm/hr → m³/s)
   const Qpeak = (C * iMmHr * areaHa) / 360;
-
-  // Triangular hydrograph distribution for dynamic routing
-  const Tp = (durMin / 2) * 60; // time to peak (seconds)
-  const Tb = 2.67 * Tp;         // base time (seconds)
+  const Tp = (durMin / 2) * 60;
+  const Tb = 2.67 * Tp;
 
   const pts = [];
-  const dt  = 30; // 30-second steps
+  const dt  = 30;
   for (let t = 0; t <= Tb + dt; t += dt) {
     let Q = 0;
-    if (t <= Tp)      Q = Qpeak * (t / Tp);
+    if (t <= Tp) Q = Qpeak * (t / Tp);
     else if (t <= Tb) Q = Qpeak * (Tb - t) / (Tb - Tp);
-    pts.push({ t, Q: Math.max(0, Q) });
+    pts.push({ t, Q: Math.max(0, Q), cumPct: null });
   }
   return pts;
+}
+
+function buildScsHydrograph() {
+  const depthMm = Number(document.getElementById('storm-depth').value)   || 50;
+  const durMin  = Number(document.getElementById('storm-duration').value) || 60;
+  const areaHa  = Number(document.getElementById('area').value)          || 50;
+  const cn      = Math.max(30, Math.min(98, Number(document.getElementById('curve-number').value) || 75));
+
+  const sMm = (25400 / cn) - 254;
+  const iaMm = 0.2 * sMm;
+  const dt = 30;
+  const totalT = durMin * 60;
+  const areaM2 = areaHa * 10000;
+  const pts = [];
+  let prevRunoffMm = 0;
+
+  for (let t = 0; t <= totalT + dt; t += dt) {
+    const ratio = Math.max(0, Math.min(1, t / totalT));
+    const cumulativeRainMm = depthMm * scsCumulativeRatio(ratio);
+    const cumulativeRunoffMm = getScsRunoffDepth(cumulativeRainMm, iaMm, sMm);
+    const incrementalRunoffMm = Math.max(0, cumulativeRunoffMm - prevRunoffMm);
+    const incrementalVolume = (incrementalRunoffMm / 1000) * areaM2;
+    const Q = incrementalVolume / dt;
+    const totalRunoffMm = getScsRunoffDepth(depthMm, iaMm, sMm);
+    const cumPct = totalRunoffMm > 0 ? (cumulativeRunoffMm / totalRunoffMm) * 100 : 0;
+
+    pts.push({ t, Q, cumPct: Math.max(0, Math.min(100, cumPct)) });
+    prevRunoffMm = cumulativeRunoffMm;
+  }
+
+  pts.push({ t: totalT + (6 * dt), Q: 0, cumPct: 100 });
+  return pts;
+}
+
+function scsCumulativeRatio(x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  return 1 / (1 + Math.exp(-10 * (x - 0.5)));
+}
+
+function getScsRunoffDepth(pMm, iaMm, sMm) {
+  if (pMm <= iaMm) return 0;
+  const effectiveP = pMm - iaMm;
+  return (effectiveP * effectiveP) / (effectiveP + sMm);
+}
+
+function switchMethod() {
+  const method = document.getElementById('method-select').value;
+  const isScs = method === 'scs';
+  document.getElementById('rational-fields').classList.toggle('hidden', isScs);
+  document.getElementById('scs-fields').classList.toggle('hidden', !isScs);
+  document.getElementById('method-pill').textContent = isScs ? 'SCS Curve Number' : 'Rational Method';
+  document.getElementById('method-note').textContent = isScs
+    ? 'SCS uses storm depth and Curve Number to generate cumulative runoff over the storm duration.'
+    : 'Rational uses rainfall intensity and runoff coefficient C to calculate peak flow.';
+  resetSim();
 }
 
 // ── Interpolate Q from hydrograph at time t (seconds) ───
@@ -249,6 +313,12 @@ function initChart() {
           borderWidth: 2, fill: true, tension: 0.4,
           pointRadius: 0, yAxisID: 'yFill',
         },
+        {
+          label: 'SCS Cumulative Runoff (%)',
+          data: [], borderColor: '#a855f7',
+          borderWidth: 2, borderDash: [4,4],
+          fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFill',
+        },
       ],
     },
     options: {
@@ -260,8 +330,8 @@ function initChart() {
         legend: { position: 'top', labels: { usePointStyle: true, font: { size: 12 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.datasetIndex === 2
-              ? ` Fill: ${ctx.parsed.y.toFixed(1)}%`
+            label: ctx => ctx.datasetIndex >= 2
+              ? ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1) ?? 0}%`
               : ` ${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y.toFixed(2)} m³/s`,
           },
         },
@@ -301,7 +371,23 @@ function pushChartPoint(tMin, Qin, volume) {
   chart.data.datasets[0].data.push(Qin);
   chart.data.datasets[1].data.push(getQpump());
   chart.data.datasets[2].data.push(fill);
+  chart.data.datasets[3].data.push(getCumulativePercent(tMin * 60));
   chart.update('none');
+}
+
+function getCumulativePercent(t) {
+  if (activeMethod !== 'scs' || !hydrograph.length) return null;
+  if (t <= hydrograph[0].t) return hydrograph[0].cumPct || 0;
+  for (let i = 1; i < hydrograph.length; i++) {
+    if (hydrograph[i].t >= t) {
+      const p0 = hydrograph[i - 1], p1 = hydrograph[i];
+      const span = p1.t - p0.t || 1;
+      const a = (t - p0.t) / span;
+      const c0 = p0.cumPct ?? 0, c1 = p1.cumPct ?? c0;
+      return c0 + a * (c1 - c0);
+    }
+  }
+  return 100;
 }
 
 function resetChart() {

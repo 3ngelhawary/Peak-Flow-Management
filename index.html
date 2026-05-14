@@ -25,9 +25,9 @@
     <div class="hero-copy">
       <span class="hero-kicker">Synthetic Storm Design Tool</span>
       <h1>Storm Retention Tank Simulator</h1>
-      <p>Dynamic simulation of pump station peak flow using Rational Method peak inflow and a triangular hydrograph distribution.</p>
+      <p>Dynamic simulation of pump station peak flow using either Rational Method or SCS Curve Number runoff routing.</p>
       <div class="hero-badges" aria-label="Main design features">
-        <span>Rational Peak Flow</span>
+        <span>Rational / SCS</span>
         <span>Factored Storage</span>
         <span>Emptying Time</span>
       </div>
@@ -47,17 +47,48 @@
         <span class="section-kicker">Design Dashboard</span>
         <h2 id="sim-heading">Synthetic Storm Simulation</h2>
       </div>
-      <span class="method-pill">Rational + Triangular Hydrograph</span>
+      <span class="method-pill" id="method-pill">Rational Method</span>
     </div>
 
     <div id="panel-synthetic" class="param-panel">
-      <div class="param-grid">
+      <div class="method-select">
+        <label>Calculation Method
+          <select id="method-select">
+            <option value="rational" selected>Rational Method</option>
+            <option value="scs">SCS Curve Number Method</option>
+          </select>
+        </label>
+        <p class="method-note" id="method-note">Rational uses rainfall intensity and runoff coefficient C to calculate peak flow.</p>
+      </div>
+
+      <div class="param-grid method-fields" id="rational-fields">
         <label class="slider-label">Rainfall Intensity
           <div class="slider-row">
             <input id="intensity" type="range" min="5" max="150" value="50" step="1" />
             <output id="intensity-val" for="intensity">50 mm/hr</output>
           </div>
         </label>
+        <label class="slider-label">Runoff Coefficient C
+          <div class="slider-row">
+            <input id="runoff-c" type="range" min="0.05" max="1.0" step="0.05" value="0.75" />
+            <output id="c-val" for="runoff-c">0.75</output>
+          </div>
+        </label>
+      </div>
+
+      <div class="param-grid method-fields hidden" id="scs-fields">
+        <label>Storm Depth (mm)
+          <input id="storm-depth" type="number" step="5" min="1" value="50" />
+        </label>
+        <label class="slider-label">Curve Number CN
+          <div class="slider-row">
+            <input id="curve-number" type="range" min="30" max="98" value="75" step="1" />
+            <output id="cn-val" for="curve-number">75</output>
+          </div>
+        </label>
+      </div>
+
+      <div class="param-grid common-fields">
         <label>Storm Duration
           <select id="storm-duration">
             <option value="30">30 min</option>
@@ -67,20 +98,13 @@
             <option value="360">6 hours</option>
           </select>
         </label>
+        <label>Catchment Area (ha)
+          <input id="area" type="number" step="1" min="1" value="50" />
+        </label>
       </div>
     </div>
 
-
     <div class="catchment-grid">
-      <label>Catchment Area (ha)
-        <input id="area" type="number" step="1" min="1" value="50" />
-      </label>
-      <label class="slider-label">Runoff Coefficient C
-        <div class="slider-row">
-          <input id="runoff-c" type="range" min="0.05" max="1.0" step="0.05" value="0.75" />
-          <output id="c-val" for="runoff-c">0.75</output>
-        </div>
-      </label>
       <label>Pump Discharge (L/sec)
         <input id="qpump-sim" type="number" step="50" min="0" value="1900" />
       </label>
@@ -186,9 +210,10 @@
     <h2 id="concept-heading">Concept</h2>
     <p class="note">The displayed required storage is the maximum factored volume reached during the simulation, not the final remaining volume. Emptying time is calculated from that maximum volume divided by pump discharge.</p>
     <p class="note">To determine the best storage duration, run/check several storm durations and select the critical duration: the one that gives the highest Max Factored Volume while keeping overflow risk and emptying time acceptable.</p>
-    <p class="equation">Q<sub>peak</sub> = C × i × A / 360</p>
+    <p class="equation">Rational: Q<sub>peak</sub> = C × i × A / 360</p>
+    <p class="equation">SCS: S = 25400 / CN − 254, Q = (P − 0.2S)² / (P + 0.8S)</p>
     <p class="equation">V<sub>required</sub> = max[Σ(Q<sub>in</sub> − Q<sub>pump</sub>) × Δt × SF]</p>
-    <p><strong>Calculation method:</strong> Rational Method is used to calculate peak inflow. A triangular hydrograph shape is then used to distribute that peak flow over the storm duration for dynamic storage simulation.</p>
+    <p><strong>Calculation method:</strong> The user can select Rational or SCS. Rational uses rainfall intensity and runoff coefficient C. SCS uses storm depth and Curve Number, generates a cumulative runoff curve, then converts the incremental runoff depth into inflow over time.</p>
     <p><strong>Tank Capacity</strong> is the physical available tank size entered by the user. <strong>Max Factored Volume</strong> is the calculated required storage during the storm, including safety factor. If Max Factored Volume is higher than Tank Capacity, the tank is undersized.</p>
     <p><strong>Pump Discharge</strong> is entered in L/sec for site use. The simulator converts it internally to m³/s using: m³/s = L/sec ÷ 1000.</p>
   </section>
@@ -196,7 +221,7 @@
   <section id="checks" class="card" aria-labelledby="checks-heading">
     <h2 id="checks-heading">Engineering Checks</h2>
     <div class="checks">
-      <span>Peak inflow</span>
+      <span>Rational / SCS method</span>
       <span>Pump capacity</span>
       <span>Safety factor</span>
       <span>Tank fill percentage</span>
