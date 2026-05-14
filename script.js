@@ -23,9 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Slider output ───────────────────────────────────────
 function bindSliders() {
-  const intensity = document.getElementById('intensity');
-  const intOut    = document.getElementById('intensity-val');
-  intensity.addEventListener('input', () => { intOut.value = `${intensity.value} mm/hr`; });
+  bindRangeNumberPair('intensity', 'intensity-manual', 'intensity-val', ' mm/hr');
+  bindRangeNumberPair('storm-depth', 'storm-depth-manual', 'depth-val', ' mm');
 
   const coeffEl  = document.getElementById('runoff-c');
   const coeffOut = document.getElementById('c-val');
@@ -34,6 +33,27 @@ function bindSliders() {
   const cnEl  = document.getElementById('curve-number');
   const cnOut = document.getElementById('cn-val');
   cnEl.addEventListener('input', () => { cnOut.value = String(Math.round(Number(cnEl.value))); });
+}
+
+function bindRangeNumberPair(rangeId, numberId, outputId, suffix) {
+  const rangeEl = document.getElementById(rangeId);
+  const numberEl = document.getElementById(numberId);
+  const outputEl = document.getElementById(outputId);
+
+  const update = source => {
+    const min = Number(rangeEl.min);
+    const max = Number(rangeEl.max);
+    let value = Number(source.value);
+    if (Number.isNaN(value)) value = min;
+    value = Math.max(min, Math.min(max, value));
+    rangeEl.value = value;
+    numberEl.value = value;
+    outputEl.value = suffix.trim();
+  };
+
+  rangeEl.addEventListener('input', () => update(rangeEl));
+  numberEl.addEventListener('input', () => update(numberEl));
+  update(rangeEl);
 }
 
 // ── Simulation controls ─────────────────────────────────
@@ -147,7 +167,7 @@ function buildSyntheticHydrograph() {
 }
 
 function buildRationalHydrograph() {
-  const iMmHr  = Number(document.getElementById('intensity').value)     || 50;
+  const iMmHr  = Number(document.getElementById('intensity-manual').value) || 50;
   const durMin = Number(document.getElementById('storm-duration').value) || 60;
   const areaHa = Number(document.getElementById('area').value)          || 50;
   const C      = Number(document.getElementById('runoff-c').value)      || 0.75;
@@ -168,7 +188,7 @@ function buildRationalHydrograph() {
 }
 
 function buildScsHydrograph() {
-  const depthMm = Number(document.getElementById('storm-depth').value) || 50;
+  const depthMm = Number(document.getElementById('storm-depth-manual').value) || 50;
   const areaHa  = Number(document.getElementById('area').value)        || 50;
   const cn      = Math.max(30, Math.min(98, Number(document.getElementById('curve-number').value) || 75));
 
@@ -239,7 +259,7 @@ function switchMethod() {
   document.getElementById('scs-fields').classList.toggle('hidden', !isScs);
   document.getElementById('method-pill').textContent = isScs ? 'SCS Type II 24-hr' : 'Rational Method';
   document.getElementById('method-note').textContent = isScs
-    ? 'SCS uses storm depth and Curve Number with a fixed 24-hour Type II dimensionless storm curve.'
+    ? 'SCS uses storm depth and Curve Number to generate runoff from the Type II cumulative curve.'
     : 'Rational uses rainfall intensity, duration, and runoff coefficient C to calculate peak flow.';
 
   if (isScs) {
