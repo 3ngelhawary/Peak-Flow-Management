@@ -1,4 +1,3 @@
-<!-- File: index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,21 +7,13 @@
   <meta name="author" content="A. ElHawary" />
   <meta name="theme-color" content="#071b33" />
   <title>Storm Retention Tank Simulator</title>
-
   <link rel="stylesheet" href="styles.css" />
-
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
-
 <body>
-
 <header>
   <nav aria-label="Page sections">
-    <div class="logo">
-      <span class="logo-mark">💧</span>
-      Peak Flow Manager
-    </div>
-
+    <div class="logo"><span class="logo-mark">💧</span> Peak Flow Manager</div>
     <a href="#simulator">Simulator</a>
     <a href="#concept">Concept</a>
     <a href="#checks">Checks</a>
@@ -31,333 +22,237 @@
 
 <section class="hero">
   <div class="hero-inner">
-
     <div class="hero-copy">
-      <span class="hero-kicker">
-        Synthetic Storm Design Tool
-      </span>
-
+      <span class="hero-kicker">Synthetic Storm Design Tool</span>
       <h1>Storm Retention Tank Simulator</h1>
-
-      <p>
-        Dynamic storage simulation using either Rational Method
-        peak flow or SCS Curve Number runoff from a Type II
-        24-hour storm.
-      </p>
-
+      <p>Dynamic storage simulation using either Rational Method peak flow or SCS Curve Number runoff from a Type II 24-hour storm.</p>
       <div class="hero-badges" aria-label="Main design features">
         <span>Rational / SCS</span>
         <span>Factored Storage</span>
         <span>Emptying Time</span>
       </div>
     </div>
-
     <div class="hero-panel" aria-hidden="true">
-      <div class="hero-panel-title">
-        Design Focus
-      </div>
-
-      <div class="hero-panel-value">
-        MAX VOLUME
-      </div>
-
-      <div class="hero-panel-sub">
-        critical storage during storm
-      </div>
+      <div class="hero-panel-title">Design Focus</div>
+      <div class="hero-panel-value">MAX VOLUME</div>
+      <div class="hero-panel-sub">critical storage during storm</div>
     </div>
-
   </div>
 </section>
 
 <main>
-
-  <section id="simulator"
-           class="card simulator-card"
-           aria-labelledby="sim-heading">
-
+  <section id="simulator" class="card simulator-card" aria-labelledby="sim-heading">
     <div class="section-head">
-
       <div>
-        <h2 id="sim-heading">
-          Dynamic Storm Simulation
-        </h2>
-
-        <p>
-          Choose the hydrology method, enter catchment and pump
-          parameters, then run the routing simulation.
-        </p>
+        <h2 id="sim-heading">Dynamic Storm Simulation</h2>
+        <p>Choose the hydrology method, enter catchment and pump parameters, then run the routing simulation.</p>
       </div>
-
-      <span class="method-pill" id="method-label">
-        Rational Method
-      </span>
-
+      <span class="method-pill" id="method-label">Rational Method</span>
     </div>
 
     <div class="param-panel">
-
       <div class="param-grid two-col">
-
         <label>
           Calculation Method
-
           <select id="method-select">
-            <option value="rational" selected>
-              Rational Method
-            </option>
-
-            <option value="scs">
-              SCS Curve Number Method
-            </option>
+            <option value="rational" selected>Rational Method</option>
+            <option value="scs">SCS Curve Number Method</option>
           </select>
         </label>
-
-        <div class="method-note" id="method-note">
-          Rational uses rainfall intensity and runoff coefficient C.
-        </div>
-
+        <div class="method-note" id="method-note">Rational uses rainfall intensity and runoff coefficient C.</div>
       </div>
-
     </div>
 
     <div class="method-controls">
-
-      <!-- Rational -->
-
       <div class="control-card" id="rational-controls">
-
         <h3>Rational Inputs</h3>
-
         <div class="param-grid two-col">
-
           <label class="slider-label">
-
             Rainfall Intensity (mm/hr)
-
             <div class="slider-row">
-
-              <input id="intensity"
-                     type="range"
-                     min="5"
-                     max="150"
-                     value="50"
-                     step="1" />
-
-              <input id="intensity-val"
-                     class="value-pill"
-                     type="number"
-                     min="5"
-                     max="150"
-                     step="1"
-                     value="50"
-                     aria-label="Rainfall intensity value" />
-
+              <input id="intensity" type="range" min="5" max="150" value="50" step="1" />
+              <input id="intensity-val" class="value-pill" type="number" min="5" max="150" step="1" value="50" aria-label="Rainfall intensity value" />
             </div>
-
           </label>
-
           <label class="slider-label">
-
             Runoff Coefficient C
-
             <div class="slider-row">
-
-              <input id="runoff-c"
-                     type="range"
-                     min="0.05"
-                     max="1"
-                     value="0.75"
-                     step="0.05" />
-
-              <input id="c-val"
-                     class="value-pill"
-                     type="number"
-                     min="0.05"
-                     max="1"
-                     step="0.05"
-                     value="0.75"
-                     aria-label="Runoff coefficient value" />
-
+              <input id="runoff-c" type="range" min="0.05" max="1" value="0.75" step="0.05" />
+              <input id="c-val" class="value-pill" type="number" min="0.05" max="1" step="0.05" value="0.75" aria-label="Runoff coefficient value" />
             </div>
-
           </label>
-
         </div>
-
-        <div class="method-note">
-          Note: For the Rational Method, Tc is implicit —
-          select intensity i from your IDF curve at the
-          duration equal to the system's Time of Concentration.
-        </div>
-
+        <div class="method-note">Note: For the Rational Method, Tc is implicit — select intensity i from your IDF curve at the duration equal to the system's Time of Concentration.</div>
       </div>
-
-      <!-- SCS -->
 
       <div class="control-card inactive" id="scs-controls">
-
         <h3>SCS Inputs</h3>
-
         <div class="param-grid two-col">
-
           <label class="slider-label">
-
             Storm Depth (mm)
-
             <div class="slider-row">
-
-              <input id="storm-depth"
-                     type="range"
-                     min="5"
-                     max="200"
-                     value="50"
-                     step="1"
-                     disabled />
-
-              <input id="storm-depth-val"
-                     class="value-pill"
-                     type="number"
-                     min="5"
-                     max="200"
-                     step="1"
-                     value="50"
-                     aria-label="Storm depth value"
-                     disabled />
-
+              <input id="storm-depth" type="range" min="5" max="200" value="50" step="1" disabled />
+              <input id="storm-depth-val" class="value-pill" type="number" min="5" max="200" step="1" value="50" aria-label="Storm depth value" disabled />
             </div>
-
           </label>
-
           <label class="slider-label">
-
             Curve Number CN
-
             <div class="slider-row">
-
-              <input id="curve-number"
-                     type="range"
-                     min="30"
-                     max="98"
-                     value="75"
-                     step="1"
-                     disabled />
-
-              <input id="cn-val"
-                     class="value-pill"
-                     type="number"
-                     min="30"
-                     max="98"
-                     step="1"
-                     value="75"
-                     aria-label="Curve number value"
-                     disabled />
-
+              <input id="curve-number" type="range" min="30" max="98" value="75" step="1" disabled />
+              <input id="cn-val" class="value-pill" type="number" min="30" max="98" step="1" value="75" aria-label="Curve number value" disabled />
             </div>
-
           </label>
-
           <label class="slider-label">
-
             Time of Concentration Tc (min)
-
             <div class="slider-row">
-
-              <input id="tc"
-                     type="range"
-                     min="10"
-                     max="1000"
-                     value="60"
-                     step="1"
-                     disabled />
-
-              <input id="tc-val"
-                     class="value-pill"
-                     type="number"
-                     min="10"
-                     max="1000"
-                     step="1"
-                     value="60"
-                     aria-label="Time of concentration value"
-                     disabled />
-
+              <input id="tc" type="range" min="10" max="1000" value="60" step="1" disabled />
+              <input id="tc-val" class="value-pill" type="number" min="10" max="1000" step="1" value="60" aria-label="Time of concentration value" disabled />
             </div>
-
           </label>
-
         </div>
-
       </div>
-
     </div>
 
     <div class="catchment-grid">
-
       <label>
         Catchment Area (ha)
-
-        <input id="area"
-               type="number"
-               step="1"
-               min="1"
-               value="50" />
+        <input id="area" type="number" step="1" min="1" value="50" />
       </label>
-
       <label>
         Storm Duration
-
         <select id="storm-duration">
-
           <option value="30">30 min</option>
           <option value="60" selected>1 hour</option>
           <option value="120">2 hours</option>
           <option value="180">3 hours</option>
           <option value="360">6 hours</option>
           <option value="1440">24 hours</option>
-
         </select>
       </label>
-
       <label>
         Pump Discharge (L/sec)
-
-        <input id="qpump-lps"
-               type="number"
-               step="10"
-               min="0"
-               value="1900" />
+        <input id="qpump-lps" type="number" step="10" min="0" value="1900" />
       </label>
-
       <label>
         Tank Capacity (m³)
-
-        <input id="vmax"
-               type="number"
-               step="500"
-               min="100"
-               value="15000" />
+        <input id="vmax" type="number" step="500" min="100" value="15000" />
       </label>
-
       <label>
         Safety Factor
-
-        <input id="safety-factor"
-               type="number"
-               step="0.05"
-               min="1"
-               value="1.15" />
+        <input id="safety-factor" type="number" step="0.05" min="1" value="1.15" />
       </label>
-
     </div>
 
+    <div class="playback" role="group" aria-label="Simulation controls">
+      <button id="play-btn" type="button" class="btn-play">▶ Start</button>
+      <button id="pause-btn" type="button" class="btn-pause" disabled>⏸ Pause</button>
+      <button id="reset-btn" type="button" class="btn-reset">↺ Reset</button>
+      <fieldset class="speed-group">
+        <legend>Speed</legend>
+        <label><input type="radio" name="simspeed" value="60" /> 1×</label>
+        <label><input type="radio" name="simspeed" value="300" checked /> 5×</label>
+        <label><input type="radio" name="simspeed" value="600" /> 10×</label>
+        <label><input type="radio" name="simspeed" value="3600" /> 60×</label>
+      </fieldset>
+    </div>
+
+    <div class="sim-dashboard" role="region" aria-label="Live simulation metrics">
+      <div class="metric-card">
+        <div class="metric-label">Current Inflow</div>
+        <div class="metric-value" id="m-qin">0.00</div>
+        <div class="metric-unit">m³/s</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Excess Flow</div>
+        <div class="metric-value" id="m-excess">0.00</div>
+        <div class="metric-unit">m³/s</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tank Volume</div>
+        <div class="metric-value" id="m-volume">0</div>
+        <div class="metric-unit">m³</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tank Fill</div>
+        <div class="metric-value" id="m-fill">0</div>
+        <div class="metric-unit">%</div>
+        <div class="fill-bar-bg" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+          <div class="fill-bar" id="fill-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-strip" aria-label="Design results">
+      <div><span>Max Tank Volume</span><strong id="max-volume">0 m³</strong></div>
+      <div><span>Max Factored Volume</span><strong id="factored-volume">0 m³</strong></div>
+      <div><span>Emptying Required Time</span><strong id="empty-time">0.0 hr</strong></div>
+      <div><span>Tank Check</span><strong id="tank-check">Ready</strong></div>
+    </div>
+
+    <div class="status-row" aria-live="polite" role="status">
+      <span class="status-badge" id="status-badge">Idle — press Start to begin</span>
+      <span class="sim-time" id="sim-time">T = 0:00</span>
+    </div>
+
+    <div class="sim-viz">
+      <div class="chart-wrap">
+        <canvas id="sim-chart" aria-label="Real-time storm hydrograph and tank fill chart"></canvas>
+      </div>
+      <div class="tank-wrap">
+        <svg class="tank-svg" viewBox="0 0 200 380" role="img" aria-label="Animated retention tank fill level">
+          <defs>
+            <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop id="wg-top" offset="0%" stop-color="#38bdf8" stop-opacity="0.9" />
+              <stop id="wg-bot" offset="100%" stop-color="#0369a1" stop-opacity="0.97" />
+            </linearGradient>
+            <clipPath id="tank-clip"><rect x="14" y="20" width="172" height="290" rx="10" /></clipPath>
+            <pattern id="warn-stripe" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(45)">
+              <rect width="7" height="14" fill="#fbbf24" opacity="0.35" />
+            </pattern>
+          </defs>
+          <rect x="84" y="2" width="32" height="18" rx="5" fill="#0ea5e9" />
+          <text x="100" y="14" text-anchor="middle" font-size="8" fill="white" font-weight="700">INLET</text>
+          <rect x="14" y="20" width="172" height="290" rx="10" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2.5" />
+          <line x1="14" y1="49" x2="186" y2="49" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="5 3" />
+          <text x="183" y="46" text-anchor="end" font-size="8" fill="#ef4444" font-weight="700">90%</text>
+          <rect id="warn-overlay" x="14" y="20" width="172" height="60" rx="10" fill="url(#warn-stripe)" opacity="0" />
+          <rect id="water-body" x="14" y="310" width="172" height="0" fill="url(#water-grad)" clip-path="url(#tank-clip)" />
+          <text id="tank-pct" x="100" y="172" text-anchor="middle" dominant-baseline="middle" font-size="36" font-weight="900" fill="#071b33">0%</text>
+          <text id="tank-status" x="100" y="205" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#0369a1">Empty</text>
+          <rect x="68" y="310" width="64" height="24" rx="6" fill="#0ea5e9" />
+          <text x="100" y="326" text-anchor="middle" font-size="9" font-weight="700" fill="white">PUMP</text>
+          <rect x="84" y="334" width="32" height="16" rx="4" fill="#071b33" />
+          <text x="100" y="345" text-anchor="middle" font-size="8" fill="white" font-weight="700">OUT</text>
+        </svg>
+        <p class="tank-caption">Retention Tank</p>
+      </div>
+    </div>
   </section>
 
-  <footer>
-    <p>
-      <strong>Developed By A. ElHawary</strong>
-    </p>
-  </footer>
+  <section id="concept" class="card" aria-labelledby="concept-heading">
+    <h2 id="concept-heading">Calculation Concept</h2>
+    <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a triangular hydrograph.</p>
+    <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph using Tc.</p>
+    <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor.</p>
+    <p><strong>Best storage duration:</strong> the critical duration is the one producing the highest max factored volume while emptying time remains acceptable.</p>
+  </section>
 
-  <script src="script.js"></script>
+  <section id="checks" class="card" aria-labelledby="checks-heading">
+    <h2 id="checks-heading">Engineering Checks</h2>
+    <div class="checks">
+      <span>Peak inflow tracked</span>
+      <span>Storage uses max volume</span>
+      <span>Safety factor included</span>
+      <span>Emptying time reported</span>
+      <span>SCS fixed at 24 hours</span>
+    </div>
+  </section>
+</main>
 
+<footer>
+  <p><strong>Developed By A. ElHawary</strong></p>
+</footer>
+
+<script src="script.js"></script>
 </body>
 </html>
