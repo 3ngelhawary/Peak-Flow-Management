@@ -13,7 +13,7 @@
 <body>
 <header>
   <nav aria-label="Page sections">
-    <div class="logo">Peak Flow Manager</div>
+    <div class="logo"><span class="logo-mark">💧</span> Peak Flow Manager</div>
     <a href="#simulator">Simulator</a>
     <a href="#concept">Concept</a>
     <a href="#checks">Checks</a>
@@ -21,13 +21,34 @@
 </header>
 
 <section class="hero">
-  <h1>Storm Retention Tank Simulator</h1>
-  <p>Dynamic simulation of pump station peak flow using Rational Method peak inflow and a triangular hydrograph distribution.</p>
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <span class="hero-kicker">Synthetic Storm Design Tool</span>
+      <h1>Storm Retention Tank Simulator</h1>
+      <p>Dynamic simulation of pump station peak flow using Rational Method peak inflow and a triangular hydrograph distribution.</p>
+      <div class="hero-badges" aria-label="Main design features">
+        <span>Rational Peak Flow</span>
+        <span>Factored Storage</span>
+        <span>Emptying Time</span>
+      </div>
+    </div>
+    <div class="hero-panel" aria-hidden="true">
+      <div class="hero-panel-title">Live Design Focus</div>
+      <div class="hero-panel-value">MAX VOLUME</div>
+      <div class="hero-panel-sub">critical storage during storm</div>
+    </div>
+  </div>
 </section>
 
 <main>
-  <section id="simulator" class="card" aria-labelledby="sim-heading">
-    <h2 id="sim-heading">Synthetic Storm Simulation</h2>
+  <section id="simulator" class="card main-card" aria-labelledby="sim-heading">
+    <div class="section-title-row">
+      <div>
+        <span class="section-kicker">Design Dashboard</span>
+        <h2 id="sim-heading">Synthetic Storm Simulation</h2>
+      </div>
+      <span class="method-pill">Rational + Triangular Hydrograph</span>
+    </div>
 
     <div id="panel-synthetic" class="param-panel">
       <div class="param-grid">
@@ -85,27 +106,27 @@
     </div>
 
     <div class="sim-dashboard" role="region" aria-label="Simulation metrics">
-      <div class="metric-card">
+      <div class="metric-card metric-blue">
         <div class="metric-label">Current Inflow</div>
         <div class="metric-value" id="m-qin">0.00</div>
         <div class="metric-unit">m³/s</div>
       </div>
-      <div class="metric-card">
+      <div class="metric-card metric-orange">
         <div class="metric-label">Excess Flow</div>
         <div class="metric-value" id="m-excess">0.00</div>
         <div class="metric-unit">m³/s</div>
       </div>
-      <div class="metric-card">
+      <div class="metric-card metric-purple">
         <div class="metric-label">Max Factored Volume</div>
         <div class="metric-value" id="m-volume">0</div>
         <div class="metric-unit">m³</div>
       </div>
-      <div class="metric-card">
+      <div class="metric-card metric-green">
         <div class="metric-label">Emptying Time</div>
         <div class="metric-value" id="m-empty-time">0 min</div>
         <div class="metric-unit">after storm</div>
       </div>
-      <div class="metric-card">
+      <div class="metric-card metric-red">
         <div class="metric-label">Tank Fill</div>
         <div class="metric-value" id="m-fill">0</div>
         <div class="metric-unit">%</div>
