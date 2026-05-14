@@ -369,18 +369,20 @@ function updateDashboard(qIn, volume) {
 }
 
 function updateResultStrip() {
-  const sf = getNum('safety-factor', 1.15);
+  // Clamp SF to minimum 1.0 — a value below 1 would reduce the design volume
+  // below the simulated peak, making tank-check always pass falsely.
+  const sf = Math.max(1.0, getNum('safety-factor', 1.15));
   const factored = maxTankVolume * sf;
   const pump = getQpump();
 
   // BUG3 FIX: emptying time uses actual accumulated peak volume (maxTankVolume),
   // not factored volume. Safety factor sizes the tank design — it does not
   // represent additional physical water that needs to be drained.
-  const emptyHours = pump > 0 ? maxTankVolume / pump / 3600 : 0;
+  const emptyHours = pump > 0 ? maxTankVolume / pump / 3600 : null;
 
   document.getElementById('max-volume').textContent = `${Math.round(maxTankVolume).toLocaleString()} m³`;
   document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
-  document.getElementById('empty-time').textContent = `${emptyHours.toFixed(1)} hr`;
+  document.getElementById('empty-time').textContent = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'N/A';
   document.getElementById('tank-check').textContent = hasRun ? (factored > getVmax() ? 'Insufficient' : 'OK') : 'Ready';
 
   // W3 FIX: display accumulated overflow/spill volume

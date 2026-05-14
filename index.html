@@ -105,10 +105,11 @@
           <label class="slider-label">
             Time of Concentration Tc (min)
             <div class="slider-row">
-              <input id="tc" type="range" min="10" max="1000" value="60" step="1" disabled />
-              <input id="tc-val" class="value-pill" type="number" min="10" max="1000" step="1" value="60" aria-label="Time of concentration value" disabled />
+              <input id="tc" type="range" min="10" max="360" value="60" step="1" disabled />
+              <input id="tc-val" class="value-pill" type="number" min="10" max="360" step="1" value="60" aria-label="Time of concentration value" disabled />
             </div>
           </label>
+          <div class="method-note" style="grid-column: 1 / -1;">Tc is the Time of Concentration. The NRCS method derives Time to Peak as Tp = (Δt/2) + 0.6 × Tc. Tp controls the hydrograph shape — a longer Tc produces a later, flatter peak.</div>
         </div>
       </div>
     </div>
@@ -131,7 +132,7 @@
       </label>
       <label>
         Pump Discharge (L/sec)
-        <input id="qpump-lps" type="number" step="10" min="0" value="1900" />
+        <input id="qpump-lps" type="number" step="10" min="0" value="200" />
       </label>
       <label>
         Tank Capacity (m³)
@@ -185,7 +186,8 @@
     <div class="result-strip" aria-label="Design results">
       <div><span>Max Tank Volume</span><strong id="max-volume">0 m³</strong></div>
       <div><span>Max Factored Volume</span><strong id="factored-volume">0 m³</strong></div>
-      <div><span>Emptying Required Time</span><strong id="empty-time">0.0 hr</strong></div>
+      <div><span>Emptying Time</span><strong id="empty-time">0.0 hr</strong></div>
+      <div><span>Overflow Volume</span><strong id="spill-volume">0 m³</strong></div>
       <div><span>Tank Check</span><strong id="tank-check">Ready</strong></div>
     </div>
 
@@ -231,11 +233,13 @@
 
   <section id="concept" class="card" aria-labelledby="concept-heading">
     <h2 id="concept-heading">Calculation Concept</h2>
-    <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a triangular hydrograph.</p>
-    <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph using Tc.</p>
-    <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor.</p>
+    <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a simplified triangular hydrograph (Tp = storm duration / 2). Select intensity i from your local IDF curve at the duration equal to the system's Time of Concentration and your target return period (e.g. 10-year, 100-year).</p>
+    <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph. The user inputs <em>Tc</em> (Time of Concentration); the model internally derives <em>Tp</em> (Time to Peak) as Tp = (Δt/2) + 0.6 × Tc. Tc max is 360 min for a 24-hour storm.</p>
+    <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor. This is the required tank design size.</p>
+    <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) at pump rate. Use this to verify inter-storm recovery.</p>
+    <p><strong>Overflow Volume:</strong> total volume lost when the tank exceeded capacity. A non-zero value means the tank is undersized or the pump is too slow.</p>
     <p><strong>Best storage duration:</strong> the critical duration is the one producing the highest max factored volume while emptying time remains acceptable.</p>
-  </section>
+    <p><strong>Dependency note:</strong> this tool loads Chart.js from a CDN (<code>cdn.jsdelivr.net</code>) and requires an internet connection. For offline use, download Chart.js and reference it locally in the <code>&lt;script&gt;</code> tag in the HTML head.</p>
 
   <section id="checks" class="card" aria-labelledby="checks-heading">
     <h2 id="checks-heading">Engineering Checks</h2>
@@ -243,8 +247,10 @@
       <span>Peak inflow tracked</span>
       <span>Storage uses max volume</span>
       <span>Safety factor included</span>
-      <span>Emptying time reported</span>
+      <span>Emptying time (actual volume)</span>
+      <span>Overflow volume tracked</span>
       <span>SCS fixed at 24 hours</span>
+      <span>Pump cut-off at empty tank</span>
     </div>
   </section>
 </main>

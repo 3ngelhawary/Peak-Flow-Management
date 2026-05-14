@@ -222,7 +222,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 .fill-bar-bg { height: 7px; background: #dbeafe; border-radius: 999px; margin-top: 12px; overflow: hidden; }
 .fill-bar { height: 100%; width: 0%; background: var(--blue); border-radius: 999px; transition: width 0.3s, background 0.3s; }
 
-.result-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.result-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
 .result-strip div {
   background: #071b33;
   color: white;
@@ -271,12 +271,13 @@ footer strong { color: #8b0000; font-weight: 950; background: white; border-radi
 
 @media (max-width: 980px) {
   .hero-inner, .method-controls, .sim-viz { grid-template-columns: 1fr; }
-  .catchment-grid, .sim-dashboard, .result-strip { grid-template-columns: repeat(2, 1fr); }
+  .catchment-grid, .sim-dashboard { grid-template-columns: repeat(2, 1fr); }
+  .result-strip { grid-template-columns: repeat(3, 1fr); }
   .hero-panel { display: none; }
 }
 @media (max-width: 640px) {
   .card { padding: 20px; }
-  .catchment-grid, .sim-dashboard, .result-strip, .two-col { grid-template-columns: 1fr; }
+  .catchment-grid, .sim-dashboard, .result-strip, .two-col { grid-template-columns: repeat(2, 1fr); }
   .slider-row { grid-template-columns: 1fr; }
   .chart-wrap { height: 300px; }
   .speed-group { margin-left: 0; }
