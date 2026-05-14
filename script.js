@@ -23,22 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Slider output ───────────────────────────────────────
 function bindSliders() {
-  bindRangeNumberPair('intensity', 'intensity-manual', 'intensity-val', ' mm/hr');
-  bindRangeNumberPair('storm-depth', 'storm-depth-manual', 'depth-val', ' mm');
-
-  const coeffEl  = document.getElementById('runoff-c');
-  const coeffOut = document.getElementById('c-val');
-  coeffEl.addEventListener('input', () => { coeffOut.value = Number(coeffEl.value).toFixed(2); });
-
-  const cnEl  = document.getElementById('curve-number');
-  const cnOut = document.getElementById('cn-val');
-  cnEl.addEventListener('input', () => { cnOut.value = String(Math.round(Number(cnEl.value))); });
+  bindRangeValuePair('intensity', 'intensity-val', 0);
+  bindRangeValuePair('storm-depth', 'depth-val', 0);
+  bindRangeValuePair('runoff-c', 'c-val', 2);
+  bindRangeValuePair('curve-number', 'cn-val', 0);
 }
 
-function bindRangeNumberPair(rangeId, numberId, outputId, suffix) {
+function bindRangeValuePair(rangeId, valueId, decimals) {
   const rangeEl = document.getElementById(rangeId);
-  const numberEl = document.getElementById(numberId);
-  const outputEl = document.getElementById(outputId);
+  const valueEl = document.getElementById(valueId);
+
+  const format = value => decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
 
   const update = source => {
     const min = Number(rangeEl.min);
@@ -47,13 +42,11 @@ function bindRangeNumberPair(rangeId, numberId, outputId, suffix) {
     if (Number.isNaN(value)) value = min;
     value = Math.max(min, Math.min(max, value));
     rangeEl.value = value;
-    numberEl.value = value;
-    outputEl.value = suffix.trim();
+    valueEl.value = format(value);
   };
 
   rangeEl.addEventListener('input', () => update(rangeEl));
-  numberEl.addEventListener('input', () => update(numberEl));
-  update(rangeEl);
+  valueEl.addEventListener('input', () => update(valueEl));
 }
 
 // ── Simulation controls ─────────────────────────────────
@@ -167,10 +160,10 @@ function buildSyntheticHydrograph() {
 }
 
 function buildRationalHydrograph() {
-  const iMmHr  = Number(document.getElementById('intensity-manual').value) || 50;
+  const iMmHr  = Number(document.getElementById('intensity-val').value) || 50;
   const durMin = Number(document.getElementById('storm-duration').value) || 60;
   const areaHa = Number(document.getElementById('area').value)          || 50;
-  const C      = Number(document.getElementById('runoff-c').value)      || 0.75;
+  const C      = Number(document.getElementById('c-val').value)      || 0.75;
 
   const Qpeak = (C * iMmHr * areaHa) / 360;
   const Tp = (durMin / 2) * 60;
@@ -188,9 +181,9 @@ function buildRationalHydrograph() {
 }
 
 function buildScsHydrograph() {
-  const depthMm = Number(document.getElementById('storm-depth-manual').value) || 50;
+  const depthMm = Number(document.getElementById('depth-val').value) || 50;
   const areaHa  = Number(document.getElementById('area').value)        || 50;
-  const cn      = Math.max(30, Math.min(98, Number(document.getElementById('curve-number').value) || 75));
+  const cn      = Math.max(30, Math.min(98, Number(document.getElementById('cn-val').value) || 75));
 
   const sMm = (25400 / cn) - 254;
   const iaMm = 0.2 * sMm;

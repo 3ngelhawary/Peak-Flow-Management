@@ -264,16 +264,30 @@ button:disabled { opacity: 0.42; cursor: not-allowed; transform: none !important
 }
 .catchment-grid { margin-bottom: 20px; }
 .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.slider-row output {
-  min-width: 86px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #e0f2fe;
-  font-size: 13px;
-  font-weight: 900;
-  color: #0369a1;
+.value-pill {
+  width: 70px !important;
+  min-width: 70px;
+  margin-top: 0 !important;
+  padding: 5px 10px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #e0f2fe !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  color: #0369a1 !important;
   text-align: center;
+  box-shadow: none !important;
 }
+.value-pill:focus {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+.value-pill::-webkit-outer-spin-button,
+.value-pill::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.value-pill { -moz-appearance: textfield; }
 
 .playback { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .speed-group {

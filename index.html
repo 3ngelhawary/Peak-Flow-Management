@@ -65,14 +65,13 @@
         <label class="slider-label">Rainfall Intensity (mm/hr)
           <div class="slider-row value-slider-row">
             <input id="intensity" type="range" min="5" max="150" value="50" step="1" />
-            <input id="intensity-manual" class="value-input" type="number" min="5" max="150" step="1" value="50" aria-label="Rainfall intensity value in mm per hour" />
-            <output id="intensity-val" for="intensity intensity-manual">mm/hr</output>
+            <input id="intensity-val" class="value-pill" type="number" min="5" max="150" step="1" value="50" aria-label="Rainfall intensity value in mm per hour" />
           </div>
         </label>
         <label class="slider-label">Runoff Coefficient C
           <div class="slider-row">
             <input id="runoff-c" type="range" min="0.05" max="1.0" step="0.05" value="0.75" />
-            <output id="c-val" for="runoff-c">0.75</output>
+            <input id="c-val" class="value-pill" type="number" min="0.05" max="1.0" step="0.05" value="0.75" aria-label="Runoff coefficient C" />
           </div>
         </label>
       </div>
@@ -81,14 +80,13 @@
         <label class="slider-label">Storm Depth (mm)
           <div class="slider-row value-slider-row">
             <input id="storm-depth" type="range" min="1" max="300" value="50" step="1" />
-            <input id="storm-depth-manual" class="value-input" type="number" min="1" max="300" step="1" value="50" aria-label="Storm depth value in millimeters" />
-            <output id="depth-val" for="storm-depth storm-depth-manual">mm</output>
+            <input id="depth-val" class="value-pill" type="number" min="1" max="300" step="1" value="50" aria-label="Storm depth value in millimeters" />
           </div>
         </label>
         <label class="slider-label">Curve Number CN
           <div class="slider-row">
             <input id="curve-number" type="range" min="30" max="98" value="75" step="1" />
-            <output id="cn-val" for="curve-number">75</output>
+            <input id="cn-val" class="value-pill" type="number" min="30" max="98" step="1" value="75" aria-label="Curve Number CN" />
           </div>
         </label>
       </div>
