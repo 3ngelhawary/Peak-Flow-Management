@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSliders();
 });
 
-// ── Slider live output ──────────────────────────────────
+// ── Slider output ───────────────────────────────────────
 function bindSliders() {
   const intensity = document.getElementById('intensity');
   const intOut    = document.getElementById('intensity-val');
@@ -30,11 +30,8 @@ function bindSliders() {
   coeffEl.addEventListener('input', () => { coeffOut.value = Number(coeffEl.value).toFixed(2); });
 }
 
-// ── Tab switching ────────────────────────────────────────
+// ── Simulation controls ─────────────────────────────────
 function bindSimControls() {
-  document.getElementById('tab-synthetic').addEventListener('click', () => switchTab('synthetic'));
-  document.getElementById('tab-live').addEventListener('click',      () => switchTab('live'));
-
   document.getElementById('play-btn').addEventListener('click',  startSim);
   document.getElementById('pause-btn').addEventListener('click', pauseSim);
   document.getElementById('reset-btn').addEventListener('click', resetSim);
@@ -43,30 +40,13 @@ function bindSimControls() {
     r.addEventListener('change', () => { simSpeed = Number(r.value); });
   });
 
-  document.getElementById('geo-btn').addEventListener('click',   getLocation);
-  document.getElementById('fetch-btn').addEventListener('click', fetchForecast);
-}
-
-function switchTab(mode) {
-  const isSynth = mode === 'synthetic';
-  document.getElementById('panel-synthetic').classList.toggle('hidden', !isSynth);
-  document.getElementById('panel-live').classList.toggle('hidden',      isSynth);
-  document.getElementById('tab-synthetic').classList.toggle('tab-active', isSynth);
-  document.getElementById('tab-live').classList.toggle('tab-active',      !isSynth);
-  document.getElementById('tab-synthetic').setAttribute('aria-selected', isSynth);
-  document.getElementById('tab-live').setAttribute('aria-selected',      !isSynth);
 }
 
 // ── Simulation engine ────────────────────────────────────
 function startSim() {
-  const livePanel = document.getElementById('panel-live');
-  const isLive    = !livePanel.classList.contains('hidden');
-
-  if (!isLive || hydrograph.length === 0) {
-    hydrograph = buildSyntheticHydrograph();
-  }
+  hydrograph = buildSyntheticHydrograph();
   if (hydrograph.length === 0) {
-    setStatus('No hydrograph data. Configure parameters or fetch live forecast.', 'warning');
+    setStatus('No hydrograph data. Configure storm parameters.', 'warning');
     return;
   }
 
@@ -153,7 +133,7 @@ function endSim() {
   setStatus('Simulation complete', 'done');
 }
 
-// ── SCS Triangular Hydrograph (Rational Method peak) ────
+// ── Triangular Hydrograph (Rational Method peak) ────
 function buildSyntheticHydrograph() {
   const iMmHr  = Number(document.getElementById('intensity').value)     || 50;
   const durMin = Number(document.getElementById('storm-duration').value) || 60;
@@ -163,7 +143,7 @@ function buildSyntheticHydrograph() {
   // Peak flow via Rational Method: Q = C·i·A / 360  (A in ha, i in mm/hr → m³/s)
   const Qpeak = (C * iMmHr * areaHa) / 360;
 
-  // SCS triangular hydrograph
+  // Triangular hydrograph distribution for dynamic routing
   const Tp = (durMin / 2) * 60; // time to peak (seconds)
   const Tb = 2.67 * Tp;         // base time (seconds)
 
@@ -192,62 +172,6 @@ function interpolateFlow(t) {
     }
   }
   return 0;
-}
-
-// ── Live forecast via Open-Meteo ─────────────────────────
-function getLocation() {
-  const statusEl = document.getElementById('geo-status');
-  if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
-  statusEl.textContent = 'Locating…';
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      document.getElementById('lat-in').value = pos.coords.latitude.toFixed(4);
-      document.getElementById('lon-in').value = pos.coords.longitude.toFixed(4);
-      statusEl.textContent = `📍 ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`;
-    },
-    () => { statusEl.textContent = 'Location access denied.'; }
-  );
-}
-
-async function fetchForecast() {
-  const lat    = parseFloat(document.getElementById('lat-in').value);
-  const lon    = parseFloat(document.getElementById('lon-in').value);
-  const areaHa = Number(document.getElementById('area').value)     || 50;
-  const C      = Number(document.getElementById('runoff-c').value) || 0.75;
-  const statusEl = document.getElementById('geo-status');
-
-  if (isNaN(lat) || isNaN(lon)) { statusEl.textContent = 'Enter valid coordinates first.'; return; }
-  statusEl.textContent = 'Fetching forecast…';
-
-  try {
-    const url  = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&forecast_days=2&timezone=auto`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-
-    hydrograph = buildLiveHydrograph(data.hourly, areaHa, C);
-    const peakQ = Math.max(...hydrograph.map(p => p.Q));
-    statusEl.textContent = `✓ 48-hr forecast loaded — Peak inflow: ${peakQ.toFixed(2)} m³/s`;
-  } catch (err) {
-    statusEl.textContent = `Fetch error: ${err.message}`;
-  }
-}
-
-function buildLiveHydrograph(hourly, areaHa, C) {
-  const { time, precipitation } = hourly;
-  const now = new Date();
-  const pts = [];
-  let simT  = 0;
-
-  for (let i = 0; i < time.length; i++) {
-    if (new Date(time[i]) < now) continue;
-    const Q = ((C * (precipitation[i] || 0) * areaHa) / 360);
-    pts.push({ t: simT, Q });
-    simT += 3600;
-    if (pts.length >= 24) break;
-  }
-  if (pts.length) pts.push({ t: simT, Q: 0 });
-  return pts;
 }
 
 // ── Dashboard ────────────────────────────────────────────

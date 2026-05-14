@@ -169,7 +169,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px; align-items: end;
 }
-.live-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .hidden { display: none !important; }
 
 .slider-label { display: flex; flex-direction: column; }
@@ -265,7 +264,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important;
 /* ── Simulation Visualization ─────────────────────────── */
 
 .sim-viz {
-  display: grid; grid-template-columns: 1fr 170px;
+  display: grid; grid-template-columns: 1fr 200px;
   gap: 24px; align-items: start;
 }
 .chart-wrap {
@@ -274,13 +273,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important;
   border-radius: 12px; padding: 12px;
 }
 .tank-wrap { text-align: center; }
-.tank-svg  { width: 100%; max-width: 155px; min-width: 0; display: block; margin: 0 auto; }
+.tank-svg  { width: 100%; max-width: 185px; min-width: 0; display: block; margin: 0 auto; }
 .tank-caption {
   font-size: 11px; font-weight: 700; color: #6b7280;
   text-transform: uppercase; letter-spacing: 0.06em; margin: 6px 0 0;
 }
 
-/* ── Manual Calculator ────────────────────────────────── */
+/* ── Notes ────────────────────────────────────────────── */
 
 .note {
   font-size: 14px; color: #0369a1; background: #f0f9ff;
@@ -348,6 +347,6 @@ footer strong { color: #8b0000; font-weight: 900; }
   .card { padding: 20px; }
   .sim-viz { grid-template-columns: 1fr; }
   .chart-wrap { height: 280px; }
-  .tank-svg { max-width: 110px; min-width: 0; }
+  .tank-svg { max-width: 140px; min-width: 0; }
   .speed-group { margin: 0; }
 }
