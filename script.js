@@ -43,6 +43,7 @@ function bindLinkedInputs() {
   linkRangeAndPill('runoff-c', 'c-val', 0.05, 1, 2);
   linkRangeAndPill('storm-depth', 'storm-depth-val', 5, 200, 0);
   linkRangeAndPill('curve-number', 'cn-val', 30, 98, 0);
+  linkRangeAndPill('tc', 'tc-val', 10, 300, 0);
 }
 
 function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
@@ -200,20 +201,60 @@ function buildScsHydrograph() {
   const depthMm = getNum('storm-depth-val', 50);
   const cn = getNum('cn-val', 75);
   const areaHa = getNum('area', 50);
+  const tcMin = getNum('tc-val', 60);
   const dtSeconds = 360;
-  const pts = [];
-  let lastRunoffDepth = 0;
+  const stormEnd = 24 * 3600;
+  const tLag = 0.6 * tcMin * 60;
+  const tp = Math.max(dtSeconds, (dtSeconds / 2) + tLag);
 
-  for (let t = 0; t <= 24 * 3600; t += dtSeconds) {
+  const nrcsUh = [
+    [0, 0], [0.1, 0.03], [0.2, 0.10], [0.3, 0.19], [0.4, 0.31],
+    [0.5, 0.47], [0.6, 0.66], [0.7, 0.82], [0.8, 0.93], [0.9, 0.99],
+    [1.0, 1.00], [1.1, 0.99], [1.2, 0.93], [1.3, 0.86], [1.4, 0.78],
+    [1.5, 0.68], [1.7, 0.56], [2.0, 0.39], [2.2, 0.30], [2.5, 0.207],
+    [3.0, 0.107], [3.5, 0.055], [4.0, 0.029], [4.5, 0.015], [5.0, 0]
+  ];
+
+  const response = [];
+  const responseEnd = 5 * tp;
+  for (let t = 0; t <= responseEnd; t += dtSeconds) {
+    const ratio = t / tp;
+    let qRatio = 0;
+    for (let i = 1; i < nrcsUh.length; i++) {
+      const p0 = nrcsUh[i - 1];
+      const p1 = nrcsUh[i];
+      if (p1[0] >= ratio) {
+        const a = (ratio - p0[0]) / (p1[0] - p0[0]);
+        qRatio = p0[1] + a * (p1[1] - p0[1]);
+        break;
+      }
+    }
+    response.push(qRatio);
+  }
+
+  const responseArea = response.reduce((sum, value) => sum + value * dtSeconds, 0);
+  const kernel = responseArea > 0 ? response.map(value => value / responseArea) : [1 / dtSeconds];
+  const flow = new Array(Math.ceil(stormEnd / dtSeconds) + kernel.length + 2).fill(0);
+
+  let lastRunoffDepth = 0;
+  for (let t = 0, step = 0; t <= stormEnd; t += dtSeconds, step++) {
     const hr = t / 3600;
     const cumulativeRain = interpolateScsRain(hr, depthMm);
     const cumulativeRunoff = calcCnRunoffDepth(cumulativeRain, cn);
     const incrementalRunoff = Math.max(0, cumulativeRunoff - lastRunoffDepth);
     lastRunoffDepth = cumulativeRunoff;
     const volume = incrementalRunoff / 1000 * areaHa * 10000;
-    pts.push({ t, Q: volume / dtSeconds });
+
+    for (let k = 0; k < kernel.length; k++) {
+      flow[step + k] += volume * kernel[k];
+    }
   }
-  pts.push({ t: 24 * 3600 + dtSeconds, Q: 0 });
+
+  const pts = [];
+  for (let i = 0; i < flow.length; i++) {
+    pts.push({ t: i * dtSeconds, Q: Math.max(0, flow[i]) });
+  }
+  pts.push({ t: (flow.length + 1) * dtSeconds, Q: 0 });
   return pts;
 }
 
