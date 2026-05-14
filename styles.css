@@ -351,3 +351,9 @@ footer strong { color: var(--cyan); }
   .tank-svg { max-width: 160px; }
   .speed-group { margin: 0; }
 }
+
+/* ── Required developer signature ─────────────────────── */
+footer strong {
+  color: #8b0000;
+  font-weight: 900;
+}

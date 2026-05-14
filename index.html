@@ -28,35 +28,23 @@
 </section>
 
 <main>
-
-  <!-- ── LIVE SIMULATOR ──────────────────────────────────── -->
   <section id="simulator" class="card" aria-labelledby="sim-heading">
     <h2 id="sim-heading">Live Storm Simulation</h2>
 
-    <!-- Mode tabs -->
     <div class="mode-tabs" role="tablist" aria-label="Simulation mode">
-      <button class="tab tab-active" id="tab-synthetic" role="tab"
-              aria-selected="true" aria-controls="panel-synthetic" type="button">
-        Synthetic Storm
-      </button>
-      <button class="tab" id="tab-live" role="tab"
-              aria-selected="false" aria-controls="panel-live" type="button">
-        Live Forecast (Open-Meteo)
-      </button>
+      <button class="tab tab-active" id="tab-synthetic" role="tab" aria-selected="true" aria-controls="panel-synthetic" type="button">Synthetic Storm</button>
+      <button class="tab" id="tab-live" role="tab" aria-selected="false" aria-controls="panel-live" type="button">Live Forecast (Open-Meteo)</button>
     </div>
 
-    <!-- Synthetic storm parameters -->
     <div id="panel-synthetic" class="param-panel" role="tabpanel" aria-labelledby="tab-synthetic">
       <div class="param-grid">
-        <label class="slider-label">
-          Rainfall Intensity
+        <label class="slider-label">Rainfall Intensity
           <div class="slider-row">
             <input id="intensity" type="range" min="5" max="150" value="50" step="1" />
             <output id="intensity-val" for="intensity">50 mm/hr</output>
           </div>
         </label>
-        <label>
-          Storm Duration
+        <label>Storm Duration
           <select id="storm-duration">
             <option value="30">30 min</option>
             <option value="60" selected>1 hour</option>
@@ -68,7 +56,6 @@
       </div>
     </div>
 
-    <!-- Live forecast parameters -->
     <div id="panel-live" class="param-panel hidden" role="tabpanel" aria-labelledby="tab-live">
       <div class="param-grid live-grid">
         <div class="location-group">
@@ -85,145 +72,128 @@
       </div>
     </div>
 
-    <!-- Catchment / hydraulic parameters -->
     <div class="catchment-grid">
-      <label>
-        Catchment Area (ha)
+      <label>Catchment Area (ha)
         <input id="area" type="number" step="1" min="1" value="50" />
       </label>
-      <label class="slider-label">
-        Runoff Coefficient C
+      <label class="slider-label">Runoff Coefficient C
         <div class="slider-row">
           <input id="runoff-c" type="range" min="0.05" max="1.0" step="0.05" value="0.75" />
           <output id="c-val" for="runoff-c">0.75</output>
         </div>
       </label>
-      <label>
-        Pump Capacity (m³/s)
+      <label>Pump Capacity (m³/s)
         <input id="qpump-sim" type="number" step="0.1" min="0" value="1.90" />
       </label>
-      <label>
-        Tank Capacity (m³)
+      <label>Tank Capacity (m³)
         <input id="vmax" type="number" step="500" min="100" value="15000" />
       </label>
     </div>
 
-    <!-- Playback controls -->
     <div class="playback" role="group" aria-label="Simulation controls">
-      <button id="play-btn"  type="button" class="btn-play">▶ Start</button>
+      <button id="play-btn" type="button" class="btn-play">▶ Start</button>
       <button id="pause-btn" type="button" class="btn-pause" disabled>⏸ Pause</button>
       <button id="reset-btn" type="button" class="btn-reset">↺ Reset</button>
       <fieldset class="speed-group">
         <legend>Speed</legend>
-        <label><input type="radio" name="simspeed" value="60"  />  1×</label>
+        <label><input type="radio" name="simspeed" value="60" /> 1×</label>
         <label><input type="radio" name="simspeed" value="300" checked /> 5×</label>
         <label><input type="radio" name="simspeed" value="600" /> 10×</label>
-        <label><input type="radio" name="simspeed" value="3600"/> 60×</label>
+        <label><input type="radio" name="simspeed" value="3600" /> 60×</label>
       </fieldset>
     </div>
 
-    <!-- Live metrics -->
     <div class="sim-dashboard" role="region" aria-label="Live simulation metrics">
+      <div class="metric-card"><div class="metric-label">Current Inflow</div><div class="metric-value" id="m-qin">0.00</div><div class="metric-unit">m³/s</div></div>
+      <div class="metric-card"><div class="metric-label">Excess Flow</div><div class="metric-value" id="m-excess">0.00</div><div class="metric-unit">m³/s</div></div>
+      <div class="metric-card"><div class="metric-label">Tank Volume</div><div class="metric-value" id="m-volume">0</div><div class="metric-unit">m³</div></div>
       <div class="metric-card">
-        <div class="metric-label">Current Inflow</div>
-        <div class="metric-value" id="m-qin">0.00</div>
-        <div class="metric-unit">m³/s</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Excess Flow</div>
-        <div class="metric-value" id="m-excess">0.00</div>
-        <div class="metric-unit">m³/s</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Tank Volume</div>
-        <div class="metric-value" id="m-volume">0</div>
-        <div class="metric-unit">m³</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Tank Fill</div>
-        <div class="metric-value" id="m-fill">0</div>
-        <div class="metric-unit">%</div>
-        <div class="fill-bar-bg" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-          <div class="fill-bar" id="fill-bar"></div>
-        </div>
+        <div class="metric-label">Tank Fill</div><div class="metric-value" id="m-fill">0</div><div class="metric-unit">%</div>
+        <div class="fill-bar-bg" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"><div class="fill-bar" id="fill-bar"></div></div>
       </div>
     </div>
 
-    <!-- Status row -->
     <div class="status-row" aria-live="polite" role="status">
       <span class="status-badge" id="status-badge">Idle — press Start to begin</span>
       <span class="sim-time" id="sim-time">T = 0:00</span>
     </div>
 
-    <!-- Visualization: chart + tank -->
     <div class="sim-viz">
-      <div class="chart-wrap">
-        <canvas id="sim-chart" aria-label="Real-time storm hydrograph and tank fill chart"></canvas>
-      </div>
-
+      <div class="chart-wrap"><canvas id="sim-chart" aria-label="Real-time storm hydrograph and tank fill chart"></canvas></div>
       <div class="tank-wrap">
         <svg class="tank-svg" viewBox="0 0 200 380" role="img" aria-label="Animated retention tank fill level">
           <defs>
-            <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1">
-              <stop id="wg-top" offset="0%"   stop-color="#38bdf8" stop-opacity="0.9"/>
-              <stop id="wg-bot" offset="100%" stop-color="#0369a1" stop-opacity="0.97"/>
-            </linearGradient>
-            <clipPath id="tank-clip">
-              <rect x="14" y="20" width="172" height="290" rx="10"/>
-            </clipPath>
-            <pattern id="warn-stripe" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(45)">
-              <rect width="7" height="14" fill="#fbbf24" opacity="0.35"/>
-            </pattern>
+            <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1"><stop id="wg-top" offset="0%" stop-color="#38bdf8" stop-opacity="0.9"/><stop id="wg-bot" offset="100%" stop-color="#0369a1" stop-opacity="0.97"/></linearGradient>
+            <clipPath id="tank-clip"><rect x="14" y="20" width="172" height="290" rx="10"/></clipPath>
+            <pattern id="warn-stripe" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(45)"><rect width="7" height="14" fill="#fbbf24" opacity="0.35"/></pattern>
           </defs>
-
-          <!-- Inlet -->
-          <rect x="84" y="2" width="32" height="18" rx="5" fill="#0ea5e9"/>
-          <text x="100" y="14" text-anchor="middle" font-size="8" fill="white" font-weight="700">INLET</text>
-
-          <!-- Tank shell -->
+          <rect x="84" y="2" width="32" height="18" rx="5" fill="#0ea5e9"/><text x="100" y="14" text-anchor="middle" font-size="8" fill="white" font-weight="700">INLET</text>
           <rect x="14" y="20" width="172" height="290" rx="10" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2.5"/>
-
-          <!-- Overflow line at 90% -->
-          <line x1="14" y1="49" x2="186" y2="49" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="5 3"/>
-          <text x="183" y="46" text-anchor="end" font-size="8" fill="#ef4444" font-weight="700">90% OVERFLOW</text>
-
-          <!-- Level ticks -->
-          <line x1="14" y1="93"  x2="32" y2="93"  stroke="#cbd5e1" stroke-width="1.5"/>
-          <text x="36" y="97"  font-size="10" fill="#94a3b8" font-weight="600">75%</text>
-          <line x1="14" y1="165" x2="32" y2="165" stroke="#cbd5e1" stroke-width="1.5"/>
-          <text x="36" y="169" font-size="10" fill="#94a3b8" font-weight="600">50%</text>
-          <line x1="14" y1="237" x2="32" y2="237" stroke="#cbd5e1" stroke-width="1.5"/>
-          <text x="36" y="241" font-size="10" fill="#94a3b8" font-weight="600">25%</text>
-
-          <!-- Warning overlay (shows near overflow) -->
-          <rect id="warn-overlay" x="14" y="20" width="172" height="60" rx="10"
-                fill="url(#warn-stripe)" opacity="0"/>
-
-          <!-- Water body -->
-          <rect id="water-body" x="14" y="310" width="172" height="0"
-                fill="url(#water-grad)" clip-path="url(#tank-clip)"/>
-
-          <!-- Centre labels -->
-          <text id="tank-pct"    x="100" y="172" text-anchor="middle" dominant-baseline="middle"
-                font-size="36" font-weight="900" fill="#071b33">0%</text>
-          <text id="tank-status" x="100" y="205" text-anchor="middle" dominant-baseline="middle"
-                font-size="12"  fill="#0369a1">Empty</text>
-
-          <!-- Pump / outlet -->
-          <rect x="68" y="310" width="64" height="24" rx="6" fill="#0ea5e9"/>
-          <text x="100" y="326" text-anchor="middle" font-size="9" font-weight="700" fill="white">PUMP</text>
-          <rect x="84" y="334" width="32" height="16" rx="4" fill="#071b33"/>
-          <text x="100" y="345" text-anchor="middle" font-size="8" fill="white" font-weight="700">OUT</text>
+          <line x1="14" y1="49" x2="186" y2="49" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="5 3"/><text x="183" y="46" text-anchor="end" font-size="8" fill="#ef4444" font-weight="700">90% OVERFLOW</text>
+          <line x1="14" y1="93" x2="32" y2="93" stroke="#cbd5e1" stroke-width="1.5"/><text x="36" y="97" font-size="10" fill="#94a3b8" font-weight="600">75%</text>
+          <line x1="14" y1="165" x2="32" y2="165" stroke="#cbd5e1" stroke-width="1.5"/><text x="36" y="169" font-size="10" fill="#94a3b8" font-weight="600">50%</text>
+          <line x1="14" y1="237" x2="32" y2="237" stroke="#cbd5e1" stroke-width="1.5"/><text x="36" y="241" font-size="10" fill="#94a3b8" font-weight="600">25%</text>
+          <rect id="warn-overlay" x="14" y="20" width="172" height="60" rx="10" fill="url(#warn-stripe)" opacity="0"/>
+          <rect id="water-body" x="14" y="310" width="172" height="0" fill="url(#water-grad)" clip-path="url(#tank-clip)"/>
+          <text id="tank-pct" x="100" y="172" text-anchor="middle" dominant-baseline="middle" font-size="36" font-weight="900" fill="#071b33">0%</text>
+          <text id="tank-status" x="100" y="205" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#0369a1">Empty</text>
+          <rect x="68" y="310" width="64" height="24" rx="6" fill="#0ea5e9"/><text x="100" y="326" text-anchor="middle" font-size="9" font-weight="700" fill="white">PUMP</text>
+          <rect x="84" y="334" width="32" height="16" rx="4" fill="#071b33"/><text x="100" y="345" text-anchor="middle" font-size="8" fill="white" font-weight="700">OUT</text>
         </svg>
         <p class="tank-caption">Retention Tank</p>
       </div>
     </div>
   </section>
 
-  <!-- ── MANUAL CALCULATOR ───────────────────────────────── -->
   <section id="calculator" class="card" aria-labelledby="calc-heading">
     <h2 id="calc-heading">Manual Storage Calculator</h2>
     <p class="note">Formula: V = (Q<sub>in</sub> &minus; Q<sub>pump</sub>) &times; T &times; SF</p>
     <div class="form-grid">
-      <label>Peak Inflow Q<sub>in</sub> (m&sup3;/s)
-        <input id="qin
+      <label>Peak Inflow Q<sub>in</sub> (m&sup3;/s)<input id="qin" type="number" min="0" step="0.01" value="3.50" /></label>
+      <label>Pump Capacity Q<sub>pump</sub> (m&sup3;/s)<input id="qpump" type="number" min="0" step="0.01" value="1.90" /></label>
+      <label>Duration T (min)<input id="duration" type="number" min="1" step="1" value="60" /></label>
+      <label>Safety Factor SF<input id="factor" type="number" min="0.1" step="0.05" value="1.20" /></label>
+    </div>
+    <button id="calc-btn" type="button" class="btn-cta">Calculate Required Storage</button>
+    <div class="result" aria-live="polite">
+      <h3>Required Storage Volume</h3>
+      <output id="volume">—</output>
+      <p id="message">Enter values and press Calculate.</p>
+    </div>
+  </section>
+
+  <section id="concept" class="card" aria-labelledby="concept-heading">
+    <h2 id="concept-heading">Concept</h2>
+    <div class="grid">
+      <div>
+        <h3>Retention principle</h3>
+        <p>The tank stores the temporary excess when storm inflow is higher than the pump station discharge capacity.</p>
+        <p class="equation">V = (Q<sub>in</sub> − Q<sub>pump</sub>) × T × SF</p>
+      </div>
+      <div>
+        <h3>Simulation logic</h3>
+        <p>The synthetic mode estimates peak runoff using the Rational Method, then creates a triangular hydrograph for storage routing.</p>
+        <p>The live mode converts forecast precipitation into an hourly inflow series using the same catchment area and runoff coefficient.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="checks" class="card" aria-labelledby="checks-heading">
+    <h2 id="checks-heading">Engineering Checks</h2>
+    <div class="checks">
+      <span>Peak inflow vs pump capacity</span>
+      <span>Required storage volume</span>
+      <span>Tank fill percentage</span>
+      <span>Overflow risk above 90%</span>
+      <span>Forecast-based inflow update</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p><strong>Developed By A. ElHawary</strong></p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

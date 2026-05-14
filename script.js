@@ -62,9 +62,15 @@ function startSim() {
   const livePanel = document.getElementById('panel-live');
   const isLive    = !livePanel.classList.contains('hidden');
 
-  if (!isLive || hydrograph.length === 0) {
+  if (isLive && hydrograph.length === 0) {
+    setStatus('No live forecast loaded. Fetch rainfall forecast first.', 'warning');
+    return;
+  }
+
+  if (!isLive) {
     hydrograph = buildSyntheticHydrograph();
   }
+
   if (hydrograph.length === 0) {
     setStatus('No hydrograph data. Configure parameters or fetch live forecast.', 'warning');
     return;
@@ -222,14 +228,23 @@ async function fetchForecast() {
     const data = await resp.json();
 
     hydrograph = buildLiveHydrograph(data.hourly, areaHa, C);
+    if (hydrograph.length === 0) {
+      statusEl.textContent = 'Forecast loaded, but no future rainfall data was returned.';
+      setStatus('No live hydrograph data available.', 'warning');
+      return;
+    }
+
+    resetSim();
     const peakQ = Math.max(...hydrograph.map(p => p.Q));
     statusEl.textContent = `✓ 48-hr forecast loaded — Peak inflow: ${peakQ.toFixed(2)} m³/s`;
+    setStatus('Live forecast ready — press Start to begin', 'done');
   } catch (err) {
     statusEl.textContent = `Fetch error: ${err.message}`;
   }
 }
 
 function buildLiveHydrograph(hourly, areaHa, C) {
+  if (!hourly || !Array.isArray(hourly.time) || !Array.isArray(hourly.precipitation)) return [];
   const { time, precipitation } = hourly;
   const now = new Date();
   const pts = [];
@@ -295,7 +310,13 @@ function updateTankViz(f) {
 
 // ── Chart.js ─────────────────────────────────────────────
 function initChart() {
-  const ctx = document.getElementById('sim-chart').getContext('2d');
+  const canvas = document.getElementById('sim-chart');
+  if (!canvas || typeof Chart === 'undefined') {
+    setStatus('Chart library not loaded. Simulation controls remain available.', 'warning');
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
   chart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -358,6 +379,7 @@ function initChart() {
 }
 
 function pushChartPoint(tMin, Qin, volume) {
+  if (!chart) return;
   const now = performance.now();
   if (now - lastChartPush < 250) return; // throttle to 4 fps
   lastChartPush = now;
