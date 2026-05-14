@@ -1,15 +1,18 @@
-<!-- File: index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Estimate required temporary storage volume when incoming storm flow exceeds pump station capacity." />
+  <meta name="author" content="A. ElHawary" />
+  <meta name="theme-color" content="#071b33" />
   <title>Storm Retention Tank Calculator</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
 <header>
-  <nav>
+  <nav aria-label="Page sections">
     <div class="logo">Stormwater Calculator</div>
     <a href="#calculator">Calculator</a>
     <a href="#concept">Concept</a>
@@ -19,101 +22,116 @@
 
 <section class="hero">
   <h1>Retention Tank Calculator for Storm Pump Station Peak Flow Relief</h1>
-  <p>
-    Estimate required temporary storage volume when incoming storm flow exceeds
-    pump station capacity.
-  </p>
+  <p>Estimate required temporary storage volume when incoming storm flow exceeds pump station capacity.</p>
 </section>
 
 <main>
-<section id="calculator" class="card">
-  <h2>Online Storage Calculator</h2>
-  <p class="note">Equation: V = (Qin - Qpump) × Duration × Safety Factor</p>
 
-  <div class="form-grid">
-    <label>Peak Inflow Qin (m³/s)
-      <input id="qin" type="number" step="0.01" value="2.80" />
-    </label>
+  <section id="calculator" class="card" aria-labelledby="calc-heading">
+    <h2 id="calc-heading">Online Storage Calculator</h2>
+    <p class="note">Formula: V = (Q<sub>in</sub> &minus; Q<sub>pump</sub>) &times; T &times; SF</p>
 
-    <label>Pump Capacity Qpump (m³/s)
-      <input id="qpump" type="number" step="0.01" value="1.90" />
-    </label>
+    <div class="form-grid">
+      <label>
+        Peak Inflow Q<sub>in</sub> (m&sup3;/s)
+        <input id="qin" type="number" step="0.01" min="0.01" value="2.80" />
+      </label>
 
-    <label>Peak Duration (minutes)
-      <input id="duration" type="number" step="1" value="60" />
-    </label>
+      <label>
+        Pump Capacity Q<sub>pump</sub> (m&sup3;/s)
+        <input id="qpump" type="number" step="0.01" min="0" value="1.90" />
+      </label>
 
-    <label>Safety Factor
-      <input id="factor" type="number" step="0.01" value="1.15" />
-    </label>
-  </div>
+      <label>
+        Peak Duration (min)
+        <input id="duration" type="number" step="1" min="1" value="60" />
+      </label>
 
-  <button onclick="calculateStorage()">Calculate Required Storage</button>
+      <label>
+        Safety Factor
+        <input id="factor" type="number" step="0.01" min="0.01" value="1.15" />
+      </label>
+    </div>
 
-  <div class="result">
-    <h3>Required Tank Volume</h3>
-    <div id="volume">-</div>
-    <p id="message">Enter values and calculate.</p>
-  </div>
-</section>
+    <button id="calc-btn" type="button">Calculate Required Storage</button>
 
-<section id="concept" class="grid">
-  <div class="card">
-    <h2>Problem</h2>
-    <p>Flooding risk occurs when:</p>
-    <div class="equation">Qin &gt; Qpump</div>
-    <p>The excess flow must be stored temporarily to reduce surcharge.</p>
-  </div>
+    <div id="result" class="result" aria-live="polite">
+      <h3>Required Tank Volume</h3>
+      <output id="volume" for="qin qpump duration factor">&mdash;</output>
+      <p id="message">Enter values above and press Calculate.</p>
+    </div>
+  </section>
 
-  <div class="card">
-    <h2>Design Objective</h2>
-    <ul>
-      <li>Store peak excess stormwater.</li>
-      <li>Release water after the storm peak.</li>
-      <li>Protect pump station and force main.</li>
-    </ul>
-  </div>
-</section>
+  <section id="concept" class="grid" aria-label="Engineering concept">
+    <div class="card">
+      <h2>Problem</h2>
+      <p>Flooding risk occurs when:</p>
+      <div class="equation">Q<sub>in</sub> &gt; Q<sub>pump</sub></div>
+      <p>Excess flow must be stored temporarily to prevent surcharge.</p>
+    </div>
 
-<section class="card">
-  <h2>Concept Flow Diagram</h2>
-  <svg viewBox="0 0 850 310">
-    <defs>
-      <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-        <path d="M0,0 L0,6 L9,3 z"></path>
-      </marker>
-    </defs>
-    <rect x="30" y="80" width="150" height="60"></rect>
-    <rect x="300" y="80" width="170" height="60"></rect>
-    <rect x="650" y="80" width="160" height="60"></rect>
-    <rect x="310" y="215" width="180" height="60"></rect>
-    <rect x="630" y="215" width="180" height="60"></rect>
+    <div class="card">
+      <h2>Design Objective</h2>
+      <ul>
+        <li>Store peak excess stormwater during the storm event.</li>
+        <li>Release stored water after the storm peak passes.</li>
+        <li>Protect the pump station and downstream force main.</li>
+      </ul>
+    </div>
+  </section>
 
-    <text x="105" y="115">Storm Network</text>
-    <text x="385" y="115">Diversion Chamber</text>
-    <text x="730" y="115">Pump Station</text>
-    <text x="400" y="250">Retention Tank</text>
-    <text x="720" y="250">Controlled Return</text>
+  <section class="card" aria-label="Flow diagram">
+    <h2>Concept Flow Diagram</h2>
+    <div class="svg-scroll">
+      <svg viewBox="0 0 850 310" role="img" aria-label="Flow diagram: storm network feeds diversion chamber, which feeds pump station and retention tank; retention tank feeds controlled return which loops back to pump station">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,7 L9,3.5 z" fill="#071b33" />
+          </marker>
+        </defs>
 
-    <line x1="180" y1="110" x2="300" y2="110"></line>
-    <line x1="470" y1="110" x2="650" y2="110"></line>
-    <line x1="385" y1="140" x2="385" y2="215"></line>
-    <line x1="490" y1="245" x2="630" y2="245"></line>
-    <path d="M720 215 C720 180 720 160 720 140"></path>
-  </svg>
-</section>
+        <rect x="30"  y="80"  width="150" height="60" rx="12" />
+        <rect x="300" y="80"  width="170" height="60" rx="12" />
+        <rect x="650" y="80"  width="160" height="60" rx="12" />
+        <rect x="310" y="215" width="180" height="60" rx="12" />
+        <rect x="630" y="215" width="180" height="60" rx="12" />
 
-<section id="checks" class="card">
-  <h2>Engineering Checks</h2>
-  <div class="checks">
-    <span>HGL / Backwater</span><span>Buoyancy</span><span>Groundwater</span>
-    <span>Sedimentation</span><span>Maintenance Access</span>
-    <span>Emergency Overflow</span><span>Downstream Capacity</span>
-  </div>
-</section>
+        <text x="105" y="110" dominant-baseline="middle" font-size="13">Storm Network</text>
+        <text x="385" y="104" dominant-baseline="middle" font-size="13">Diversion</text>
+        <text x="385" y="122" dominant-baseline="middle" font-size="13">Chamber</text>
+        <text x="730" y="110" dominant-baseline="middle" font-size="13">Pump Station</text>
+        <text x="400" y="245" dominant-baseline="middle" font-size="13">Retention Tank</text>
+        <text x="720" y="239" dominant-baseline="middle" font-size="13">Controlled</text>
+        <text x="720" y="257" dominant-baseline="middle" font-size="13">Return</text>
+
+        <line x1="180" y1="110" x2="300" y2="110" />
+        <line x1="470" y1="110" x2="650" y2="110" />
+        <line x1="385" y1="140" x2="385" y2="215" />
+        <line x1="490" y1="245" x2="630" y2="245" />
+        <line x1="720" y1="215" x2="720" y2="140" />
+      </svg>
+    </div>
+  </section>
+
+  <section id="checks" class="card" aria-labelledby="checks-heading">
+    <h2 id="checks-heading">Engineering Checks</h2>
+    <div class="checks" role="list">
+      <span role="listitem">HGL / Backwater</span>
+      <span role="listitem">Buoyancy</span>
+      <span role="listitem">Groundwater</span>
+      <span role="listitem">Sedimentation</span>
+      <span role="listitem">Maintenance Access</span>
+      <span role="listitem">Emergency Overflow</span>
+      <span role="listitem">Downstream Capacity</span>
+    </div>
+  </section>
+
 </main>
 
-<footer>Developed By <strong>A. ElHawary</strong></footer>
+<footer>
+  <p>Developed by <strong>A. ElHawary</strong></p>
+</footer>
+
 <script src="script.js"></script>
 </body>
 </html>
