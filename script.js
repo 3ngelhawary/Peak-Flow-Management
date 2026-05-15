@@ -182,18 +182,30 @@ function tick(ts) {
 
   const directQ = getDirectInflow();
   const hydrographEnd = hydrograph[hydrograph.length - 1]?.t ?? 0;
+  const isScs = document.getElementById('method-select').value === 'scs';
+  const pump = getQpump();
 
-  // FIX2: after hydrograph ends, continue draining if direct inflow > 0 or tank still has water.
-  // Sim ends when both hydrograph is done AND tank has fully drained.
+  // When pump = 0 the tank can never drain, so we must stop at the natural end of
+  // the storm event rather than waiting forever for storage to empty:
+  //   • SCS  → hard stop at T = 24 hrs (86 400 s) — the storm is defined for exactly 24 h
+  //   • Rational (IDF triangular hydrograph) → stop when hydrograph reaches zero (end of tb)
+  const noPump = pump === 0;
+  const hardStop = noPump
+    ? (isScs ? 86400 : hydrographEnd)   // SCS: 24 hr cap; Rational: end of triangle
+    : Infinity;
+
   const stormOver = simTime >= hydrographEnd;
   const storageEmpty = tankVolume <= 0;
 
-  if (stormOver && storageEmpty && directQ === 0) {
-    simTime = hydrographEnd;
+  // Normal end: storm over, tank drained (or pump=0 so we use hardStop), no direct inflow
+  const reachedHardStop = simTime >= hardStop;
+
+  if ((stormOver && storageEmpty && directQ === 0) || reachedHardStop) {
+    simTime = Math.min(simTime, hardStop < Infinity ? hardStop : hydrographEnd);
     updateDashboard(0, 0);
-    updateTankViz(0);
+    updateTankViz(tankVolume / getVmax());   // show remaining water level if pump=0
     updateResultStrip(true);
-    pushChartPoint(simTime / 60, 0, 0);
+    pushChartPoint(simTime / 60, 0, tankVolume);
     endSim();
     return;
   }
@@ -235,6 +247,7 @@ function tick(ts) {
 
   const fill = tankVolume / getVmax();
   if (fill >= 0.9) setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
+  else if (stormOver && noPump && tankVolume > 0) setStatus('Storm ended — tank holding (no pump)', 'paused');
   else if (stormOver) setStatus('Storm ended — draining tank…', 'running');
   else setStatus('Running', 'running');
 
@@ -431,7 +444,7 @@ function updateResultStrip(force) {
 
   document.getElementById('max-volume').textContent    = `${Math.round(maxTankVolume).toLocaleString()} m³`;
   document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
-  document.getElementById('empty-time').textContent    = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'N/A';
+  document.getElementById('empty-time').textContent    = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'No Pump';
   document.getElementById('spill-volume').textContent  = `${Math.round(spillVolume).toLocaleString()} m³`;
   document.getElementById('peak-inflow-res').textContent = hasRun ? `${peakInflow.toFixed(2)} m³/s` : '—';  // FIX4
   document.getElementById('peak-time-res').textContent   = peakTimeStr;                                       // FIX5
