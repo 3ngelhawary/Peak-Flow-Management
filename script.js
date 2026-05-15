@@ -177,65 +177,63 @@ function tick(ts) {
   if (lastTs === null) lastTs = ts;
   const realDelta = Math.min((ts - lastTs) / 1000, 0.1);
   lastTs = ts;
-  const simDelta = realDelta * simSpeed;
-  simTime += simDelta;
+  const totalSimDelta = realDelta * simSpeed;
 
   const directQ = getDirectInflow();
   const hydrographEnd = hydrograph[hydrograph.length - 1]?.t ?? 0;
   const isScs = document.getElementById('method-select').value === 'scs';
   const pump = getQpump();
-
-  // When pump = 0 the tank can never drain, so we must stop at the natural end of
-  // the storm event rather than waiting forever for storage to empty:
-  //   • SCS  → hard stop at T = 24 hrs (86 400 s) — the storm is defined for exactly 24 h
-  //   • Rational (IDF triangular hydrograph) → stop when hydrograph reaches zero (end of tb)
   const noPump = pump === 0;
   const hardStop = noPump
-    ? (isScs ? 86400 : hydrographEnd)   // SCS: 24 hr cap; Rational: end of triangle
+    ? (isScs ? 86400 : hydrographEnd)
     : Infinity;
 
-  const stormOver = simTime >= hydrographEnd;
-  const storageEmpty = tankVolume <= 0;
+  // Sub-step: max 10 s of sim-time per step so the triangular peak is never
+  // skipped at high speeds (200× can otherwise jump 20 s in one frame).
+  const MAX_SUBSTEP = 10; // seconds of sim-time
+  const nSteps = Math.ceil(totalSimDelta / MAX_SUBSTEP);
+  const subDelta = totalSimDelta / nSteps;
 
-  // Normal end: storm over, tank drained (or pump=0 so we use hardStop), no direct inflow
-  const reachedHardStop = simTime >= hardStop;
+  let qIn = 0; // will hold the last sub-step value for display
 
-  if ((stormOver && storageEmpty && directQ === 0) || reachedHardStop) {
-    simTime = Math.min(simTime, hardStop < Infinity ? hardStop : hydrographEnd);
-    updateDashboard(0, 0);
-    updateTankViz(tankVolume / getVmax());   // show remaining water level if pump=0
-    updateResultStrip(true);
-    pushChartPoint(simTime / 60, 0, tankVolume);
-    endSim();
-    return;
+  for (let s = 0; s < nSteps; s++) {
+    simTime += subDelta;
+
+    const stormOver = simTime >= hydrographEnd;
+    const storageEmpty = tankVolume <= 0;
+    const reachedHardStop = simTime >= hardStop;
+
+    if ((stormOver && storageEmpty && directQ === 0) || reachedHardStop) {
+      simTime = Math.min(simTime, hardStop < Infinity ? hardStop : hydrographEnd);
+      updateDashboard(0, 0);
+      updateTankViz(tankVolume / getVmax());
+      updateResultStrip(true);
+      pushChartPoint(simTime / 60, 0, tankVolume);
+      endSim();
+      return;
+    }
+
+    const stormQ = stormOver ? 0 : interpolateFlow(simTime);
+    qIn = stormQ + directQ;
+
+    const effectivePump = tankVolume > 0 ? pump : 0;
+    const net = qIn - effectivePump;
+
+    const rawNext = tankVolume + net * subDelta;
+    if (rawNext > getVmax()) spillVolume += rawNext - getVmax();
+    tankVolume = Math.max(0, Math.min(getVmax(), rawNext));
+    maxTankVolume = Math.max(maxTankVolume, tankVolume);
+
+    if (qIn > peakInflow) {
+      peakInflow = qIn;
+      peakInflowTime = simTime;
+    }
   }
 
-  // Storm runoff is zero after hydrograph ends; direct inflow continues
-  const stormQ = stormOver ? 0 : interpolateFlow(simTime);
-  const qIn = stormQ + directQ;
-
-  // Pump only draws when tank has water
-  const effectivePump = tankVolume > 0 ? getQpump() : 0;
-  const net = qIn - effectivePump;
-
-  // Accumulate spill before clamping
-  const rawNext = tankVolume + net * simDelta;
-  if (rawNext > getVmax()) {
-    spillVolume += rawNext - getVmax();
-  }
-  tankVolume = Math.max(0, Math.min(getVmax(), rawNext));
-  maxTankVolume = Math.max(maxTankVolume, tankVolume);
-
-  // FIX4/5: track peak inflow and when it occurred
-  if (qIn > peakInflow) {
-    peakInflow = qIn;
-    peakInflowTime = simTime;
-  }
-
+  // UI updates once per frame (after all sub-steps)
   updateDashboard(qIn, tankVolume);
   updateTankViz(tankVolume / getVmax());
 
-  // FIX3: throttle result strip updates to match chart throttle (every 250ms real time)
   const now = performance.now();
   if (now - lastResultUpdate >= 250) {
     updateResultStrip(false);
@@ -246,9 +244,10 @@ function tick(ts) {
   updateTimeText();
 
   const fill = tankVolume / getVmax();
+  const stormOverFinal = simTime >= hydrographEnd;
   if (fill >= 0.9) setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
-  else if (stormOver && noPump && tankVolume > 0) setStatus('Storm ended — tank holding (no pump)', 'paused');
-  else if (stormOver) setStatus('Storm ended — draining tank…', 'running');
+  else if (stormOverFinal && noPump && tankVolume > 0) setStatus('Storm ended — tank holding (no pump)', 'paused');
+  else if (stormOverFinal) setStatus('Storm ended — draining tank…', 'running');
   else setStatus('Running', 'running');
 
   rafId = requestAnimationFrame(tick);
