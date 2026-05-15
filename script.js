@@ -188,9 +188,13 @@ function tick(ts) {
     ? (isScs ? 86400 : hydrographEnd)
     : Infinity;
 
-  // Sub-step: max 10 s of sim-time per step so the triangular peak is never
-  // skipped at high speeds (200× can otherwise jump 20 s in one frame).
-  const MAX_SUBSTEP = 10; // seconds of sim-time
+  // Sub-step: cap each integration step at Tp/200 so the triangular peak is always
+  // well-resolved regardless of speed or storm duration.
+  // 30-min storm → tp=900s → substep≤4.5s; 1-hr → tp=1800s → substep≤9s.
+  const tpTime = hydrograph.length > 1
+    ? hydrograph.reduce((best, p) => p.Q > best.Q ? p : best, hydrograph[0]).t
+    : 300;
+  const MAX_SUBSTEP = Math.max(1, tpTime / 200);
   const nSteps = Math.ceil(totalSimDelta / MAX_SUBSTEP);
   const subDelta = totalSimDelta / nSteps;
 
@@ -283,7 +287,15 @@ function buildRationalHydrograph() {
   const tp = (durationMin / 2) * 60;
   const tb = 2.67 * tp;
   const pts = [];
-  for (let t = 0; t <= tb + 30; t += 30) {
+  const dt = 5; // 5-second resolution — accurate integration at all speeds
+  // Ensure the exact peak point is always included
+  const tpInt = Math.round(tp);
+  const tbInt = Math.round(tb);
+  const times = new Set();
+  for (let t = 0; t <= tbInt + dt; t += dt) times.add(t);
+  times.add(tpInt); // exact peak
+  times.add(tbInt); // exact base end
+  for (const t of [...times].sort((a, b) => a - b)) {
     let q = 0;
     if (t <= tp) q = qPeak * (t / tp);
     else if (t <= tb) q = qPeak * (tb - t) / (tb - tp);
