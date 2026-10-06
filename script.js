@@ -17,6 +17,18 @@ let lastChartPush = 0;
 let lastResultUpdate = 0;  // FIX3: throttle updateResultStrip
 let hasRun = false;
 
+// LOSS: cumulative volumes for the volume balance (m³)
+let cumInflow = 0;
+let cumPumped = 0;
+let cumInfiltrated = 0;
+let cumEvaporated = 0;
+let lossSeriesEnabled = false;                 // show the losses line on the chart
+let lossViz = { mode: 'none', evapOn: false, active: false, g: null };  // tank graphic state
+
+// With no pump, infiltration/evaporation drain the tank slowly (days). The animation stops this
+// long after runoff ends; Emptying Time is still computed in full from the drawdown integral.
+const PASSIVE_DRAIN_CAP = 72 * 3600; // s
+
 const SCS_TYPE_II = [
   [0,0],[1,0.5],[2,1.1],[3,1.7],[4,2.4],[5,3.2],[6,4.0],
   [7,4.9],[8,6.0],[9,7.3],[10,9.0],[10.5,10.2],[11,11.7],
@@ -30,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initChart();
   bindControls();
   bindLinkedInputs();
+  bindLossControls();
   setMethodMode('rational');
 });
 
@@ -114,6 +127,11 @@ function startSim() {
   const vmax = getVmax();
   if (areaHa <= 0) { setStatus('⚠ Catchment area must be greater than 0.', 'warning'); return; }
   if (vmax <= 0)   { setStatus('⚠ Tank capacity must be greater than 0.', 'warning'); return; }
+  const loss = getLossConfig();
+  if (loss.requested && !loss.geomOk) {
+    setStatus('⚠ Infiltration/evaporation needs a base length and width greater than 0.', 'warning');
+    return;
+  }
 
   hydrograph = buildHydrograph();
   if (!hydrograph.length) {
@@ -128,6 +146,7 @@ function startSim() {
   spillVolume = 0;
   peakInflow = 0;
   peakInflowTime = 0;
+  resetLossTotals();
   lastTs = null;
   lastResultUpdate = 0;
   hasRun = true;
@@ -135,6 +154,7 @@ function startSim() {
   isPaused = false;
 
   resetChart();
+  setLossSeriesEnabled(loss.active);
   document.getElementById('play-btn').disabled = true;
   document.getElementById('pause-btn').disabled = false;
   setStatus('Running', 'running');
@@ -161,14 +181,17 @@ function resetSim() {
   spillVolume = 0;
   peakInflow = 0;
   peakInflowTime = 0;
+  resetLossTotals();
   lastResultUpdate = 0;
   hasRun = false;
   document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
-  updateDashboard(0, 0);
+  updateDashboard(0, 0, 0);
+  refreshLossControls();
   updateTankViz(0);
   updateResultStrip(true);
   resetChart();
+  setLossSeriesEnabled(getLossConfig().active);
   setStatus('Idle — press Start to begin', '');
   document.getElementById('sim-time').textContent = 'T = 0:00';
 }
@@ -183,10 +206,16 @@ function tick(ts) {
   const hydrographEnd = hydrograph[hydrograph.length - 1]?.t ?? 0;
   const isScs = document.getElementById('method-select').value === 'scs';
   const pump = getQpump();
+  const vMax = getVmax();
+  const loss = getLossConfig();           // read live, like the pump rate
+  const rainEnd = getRainfallEnd();
   const noPump = pump === 0;
-  const hardStop = noPump
+  const noOutlet = noPump && !loss.active;
+  // No outlet at all: stop as before (storm end, or 24 h for SCS).
+  // Passive drain-out only (no pump, losses on): stop PASSIVE_DRAIN_CAP after runoff ends.
+  const hardStop = noOutlet
     ? (isScs ? 86400 : hydrographEnd)
-    : Infinity;
+    : (noPump ? hydrographEnd + PASSIVE_DRAIN_CAP : Infinity);
 
   // Sub-step: cap each integration step at Tp/200 so the triangular peak is always
   // well-resolved regardless of speed or storm duration.
@@ -198,35 +227,79 @@ function tick(ts) {
   const nSteps = Math.ceil(totalSimDelta / MAX_SUBSTEP);
   const subDelta = totalSimDelta / nSteps;
 
-  let qIn = 0; // will hold the last sub-step value for display
+  let qIn = 0;   // last sub-step values, for display
+  let qLoss = 0;
 
   for (let s = 0; s < nSteps; s++) {
     simTime += subDelta;
 
     const stormOver = simTime >= hydrographEnd;
-    const storageEmpty = tankVolume <= 0;
-    const reachedHardStop = simTime >= hardStop;
 
-    if ((stormOver && storageEmpty && directQ === 0) || reachedHardStop) {
-      simTime = Math.min(simTime, hardStop < Infinity ? hardStop : hydrographEnd);
-      updateDashboard(0, 0);
-      updateTankViz(tankVolume / getVmax());
-      updateResultStrip(true);
-      pushChartPoint(simTime / 60, 0, tankVolume);
-      endSim();
+    // 1) Drained: runoff finished and storage empty. Direct inflow (if any) is passing straight
+    //    through the outlet at this point, so the tank stays empty.
+    if (stormOver && tankVolume <= 0) {
+      simTime = Math.min(simTime, Math.max(hydrographEnd, simTime - subDelta));
+      finishRun(qIn, 'Simulation complete — tank drained');
+      return;
+    }
+
+    // 2) Hard stop (no outlet, or passive drain-out cap).
+    if (simTime >= hardStop) {
+      simTime = hardStop;
+      finishRun(0, noOutlet
+        ? (tankVolume > 0 ? 'Simulation complete — tank holding (no outlet)' : 'Simulation complete')
+        : 'Simulation complete — drain-out shown to 72 h after runoff; see Emptying Time');
+      return;
+    }
+
+    // 3) Can never empty: once runoff has ended only the direct inflow remains. Outflow is
+    //    smallest at the empty level (h = 0), so if even that cannot beat the direct inflow
+    //    the tank will never drain — stop instead of running forever.
+    if (stormOver && directQ > 0 && minOutflowWithWater(pump, loss) <= directQ) {
+      finishRun(directQ, 'Stopped — outflow cannot exceed direct inflow; tank will not drain');
       return;
     }
 
     const stormQ = stormOver ? 0 : interpolateFlow(simTime);
     qIn = stormQ + directQ;
 
-    const effectivePump = tankVolume > 0 ? pump : 0;
-    const net = qIn - effectivePump;
+    // Mass-limited outflows: pump, infiltration and evaporation can only remove water that is
+    // actually available in this step (storage + inflow), so volumes always balance exactly.
+    const available = tankVolume + qIn * subDelta;
+    let qPumpStep = 0;
+    let qInfStep = 0;
+    let qEvapStep = 0;
+    if (available > 0) {
+      qPumpStep = pump;
+      if (loss.active) {
+        const evapOn = !loss.evapDryOnly || simTime >= rainEnd;
+        const r = lossRates(tankVolume, loss, evapOn);
+        qInfStep = r.inf;
+        qEvapStep = r.evap;
+      }
+      const demand = (qPumpStep + qInfStep + qEvapStep) * subDelta;
+      if (demand > available) {
+        const k = available / demand;
+        qPumpStep *= k;
+        qInfStep *= k;
+        qEvapStep *= k;
+      }
+    }
 
-    const rawNext = tankVolume + net * subDelta;
-    if (rawNext > getVmax()) spillVolume += rawNext - getVmax();
-    tankVolume = Math.max(0, Math.min(getVmax(), rawNext));
+    let next = available - (qPumpStep + qInfStep + qEvapStep) * subDelta;
+    if (next < 0) next = 0;                         // round-off guard only
+    if (next > vMax) {
+      spillVolume += next - vMax;
+      next = vMax;
+    }
+    tankVolume = next;
     maxTankVolume = Math.max(maxTankVolume, tankVolume);
+
+    cumInflow += qIn * subDelta;
+    cumPumped += qPumpStep * subDelta;
+    cumInfiltrated += qInfStep * subDelta;
+    cumEvaporated += qEvapStep * subDelta;
+    qLoss = qInfStep + qEvapStep;
 
     if (qIn > peakInflow) {
       peakInflow = qIn;
@@ -235,36 +308,45 @@ function tick(ts) {
   }
 
   // UI updates once per frame (after all sub-steps)
-  updateDashboard(qIn, tankVolume);
-  updateTankViz(tankVolume / getVmax());
+  setLossViz(loss, loss.evapRate > 0 && (!loss.evapDryOnly || simTime >= rainEnd));
+  updateDashboard(qIn, tankVolume, qLoss);
+  updateTankViz(tankVolume / vMax);
 
   const now = performance.now();
   if (now - lastResultUpdate >= 250) {
-    updateResultStrip(false);
+    updateResultStrip(true);   // was updateResultStrip(false), which returned immediately
     lastResultUpdate = now;
   }
 
-  pushChartPoint(simTime / 60, qIn, tankVolume);
+  pushChartPoint(simTime / 60, qIn, tankVolume, qLoss);
   updateTimeText();
 
-  const fill = tankVolume / getVmax();
+  const fill = tankVolume / vMax;
   const stormOverFinal = simTime >= hydrographEnd;
   if (fill >= 0.9) setStatus(`⚠ Overflow Risk — ${Math.round(fill * 100)}% full`, 'warning');
-  else if (stormOverFinal && noPump && tankVolume > 0) setStatus('Storm ended — tank holding (no pump)', 'paused');
+  else if (stormOverFinal && noOutlet && tankVolume > 0) setStatus('Storm ended — tank holding (no outlet)', 'paused');
+  else if (stormOverFinal && noPump && tankVolume > 0) setStatus('Storm ended — draining by infiltration / evaporation…', 'running');
   else if (stormOverFinal) setStatus('Storm ended — draining tank…', 'running');
   else setStatus('Running', 'running');
 
   rafId = requestAnimationFrame(tick);
 }
 
-function endSim() {
+// Common end-of-run UI refresh (final point is always plotted).
+function finishRun(qInShown, message) {
+  updateDashboard(qInShown, tankVolume, 0);
+  updateTankViz(tankVolume / getVmax());
+  pushChartPoint(simTime / 60, qInShown, tankVolume, 0, true);
+  endSim(message);
+}
+
+function endSim(message = 'Simulation complete') {
   simRunning = false;
   isPaused = false;
   updateResultStrip(true); // force final update
   document.getElementById('play-btn').disabled = false;
-  document.getElementById('pause-btn').disabled = false; // allow stepping through paused state
   document.getElementById('pause-btn').disabled = true;
-  setStatus('Simulation complete', 'done');
+  setStatus(message, 'done');
   updateTimeText();
 }
 
@@ -414,14 +496,16 @@ function interpolateFlow(t) {
 }
 
 // FIX10: dashboard now shows running peak inflow in the 4th card
-function updateDashboard(qIn, volume) {
+function updateDashboard(qIn, volume, qLoss = 0) {
   const vMax = getVmax();
-  const excess = Math.max(0, qIn - getQpump());
+  // Excess = inflow the outlets cannot pass (pump + current infiltration/evaporation) → fills the tank
+  const excess = Math.max(0, qIn - getQpump() - qLoss);
   const fillPct = vMax > 0 ? volume / vMax * 100 : 0;
   document.getElementById('m-qin').textContent = qIn.toFixed(2);
   document.getElementById('m-excess').textContent = excess.toFixed(2);
   document.getElementById('m-volume').textContent = Math.round(volume).toLocaleString();
   document.getElementById('m-peak').textContent = peakInflow.toFixed(2);  // FIX10: running peak
+  document.getElementById('m-loss').textContent = (qLoss * 1000).toFixed(1); // LOSS: L/s
   const bar = document.getElementById('fill-bar');
   bar.style.width = `${Math.min(100, fillPct)}%`;
   bar.style.background = fillPct >= 90 ? '#ef4444' : fillPct >= 75 ? '#f97316' : fillPct >= 50 ? '#eab308' : 'var(--blue)';
@@ -440,8 +524,10 @@ function updateResultStrip(force) {
   const factored = maxTankVolume * sf;
   const pump = getQpump();
 
-  // Emptying time uses actual peak volume — safety factor is a design size, not physical water
-  const emptyHours = pump > 0 ? maxTankVolume / pump / 3600 : null;
+  // Emptying time uses actual peak volume — safety factor is a design size, not physical water.
+  // LOSS: includes infiltration + evaporation via the stage–storage drawdown integral.
+  // Net of direct inflow, which keeps arriving while the tank drains.
+  const emptyHours = computeEmptyingHours(maxTankVolume, pump, getLossConfig(), getDirectInflow());
 
   // FIX5: peak inflow time displayed as mm:ss or h:mm:ss
   const pth = Math.floor(peakInflowTime / 3600);
@@ -455,11 +541,35 @@ function updateResultStrip(force) {
 
   document.getElementById('max-volume').textContent    = `${Math.round(maxTankVolume).toLocaleString()} m³`;
   document.getElementById('factored-volume').textContent = `${Math.round(factored).toLocaleString()} m³`;
-  document.getElementById('empty-time').textContent    = emptyHours !== null ? `${emptyHours.toFixed(1)} hr` : 'No Pump';
+  document.getElementById('empty-time').textContent    = emptyHours === null ? 'No Pump'
+    : emptyHours === Infinity ? "Won't drain" : formatHours(emptyHours);
   document.getElementById('spill-volume').textContent  = `${Math.round(spillVolume).toLocaleString()} m³`;
+  document.getElementById('inf-volume').textContent    = hasRun ? `${Math.round(cumInfiltrated).toLocaleString()} m³` : '— m³';
+  document.getElementById('evap-volume').textContent   = hasRun ? `${Math.round(cumEvaporated).toLocaleString()} m³` : '— m³';
   document.getElementById('peak-inflow-res').textContent = hasRun ? `${peakInflow.toFixed(2)} m³/s` : '—';  // FIX4
   document.getElementById('peak-time-res').textContent   = peakTimeStr;                                       // FIX5
   document.getElementById('tank-check').textContent    = hasRun ? (factored > getVmax() ? 'Insufficient' : 'OK') : 'Ready';
+  updateMassBalance();
+}
+
+// LOSS: inflow = pumped + infiltrated + evaporated + overflow + still stored
+function updateMassBalance() {
+  const el = document.getElementById('mass-balance');
+  if (!hasRun) {
+    el.textContent = 'Run the simulation to see the volume balance.';
+    el.classList.remove('bad');
+    return;
+  }
+  const r = v => Math.round(v).toLocaleString();
+  const out = cumPumped + cumInfiltrated + cumEvaporated + spillVolume + tankVolume;
+  const err = cumInflow > 0 ? (cumInflow - out) / cumInflow * 100 : 0;
+  el.textContent = `Volume balance: inflow ${r(cumInflow)} m³ = pumped ${r(cumPumped)} + infiltrated ${r(cumInfiltrated)}`
+    + ` + evaporated ${r(cumEvaporated)} + overflow ${r(spillVolume)} + stored ${r(tankVolume)} m³ (closure error ${err.toFixed(3)}%)`;
+  el.classList.toggle('bad', Math.abs(err) > 0.1);
+}
+
+function formatHours(hours) {
+  return hours < 48 ? `${hours.toFixed(1)} hr` : `${(hours / 24).toFixed(1)} days`;
 }
 
 function updateTankViz(f) {
@@ -478,6 +588,34 @@ function updateTankViz(f) {
   document.getElementById('warn-overlay').setAttribute('opacity', f >= 0.85 ? '1' : '0');
   document.getElementById('tank-pct').textContent = `${Math.round(f * 100)}%`;
   document.getElementById('tank-status').textContent = f === 0 ? 'Empty' : f < 0.5 ? 'Filling' : f < 0.75 ? 'Half Full' : f < 0.9 ? 'High Level' : '⚠ Overflow Risk';
+  updateLossViz(f, topY + totalH - waterH);
+}
+
+// LOSS: soil bands show which surfaces infiltrate; arrows appear only on wetted surfaces.
+function updateLossViz(f, waterTopY) {
+  const show = (id, on) => document.getElementById(id).setAttribute('display', on ? 'inline' : 'none');
+  const { mode, evapOn, active, g } = lossViz;
+  const wet = f > 0;
+  show('soil-base', mode !== 'none');
+  show('soil-wall-l', mode === 'all');
+  show('soil-wall-r', mode === 'all');
+  show('inf-base-arrows', mode !== 'none' && wet);
+  document.querySelectorAll('#inf-wall-arrows path').forEach(p => {
+    p.setAttribute('display', mode === 'all' && wet && waterTopY < Number(p.dataset.y) ? 'inline' : 'none');
+  });
+  const evap = document.getElementById('evap-arrows');
+  evap.setAttribute('display', evapOn && wet ? 'inline' : 'none');
+  evap.setAttribute('transform', `translate(0 ${Math.max(waterTopY, 28)})`);
+
+  const depthEl = document.getElementById('tank-depth');
+  if (active && g) {
+    const hFull = stageFromVolume(getVmax(), g);
+    const h = stageFromVolume(f * getVmax(), g);
+    depthEl.textContent = `Water depth ${h.toFixed(2)} m of ${hFull.toFixed(2)} m`;
+    depthEl.hidden = false;
+  } else {
+    depthEl.hidden = true;
+  }
 }
 
 function initChart() {
@@ -490,7 +628,9 @@ function initChart() {
         // FIX9: label updated to clarify it includes direct inflow
         { label: 'Total Inflow (storm + direct) m³/s', data: [], borderColor: '#0ea5e9', borderWidth: 2.5, fill: false, tension: 0.35, pointRadius: 0, yAxisID: 'yFlow' },
         { label: 'Pump Capacity (m³/s)', data: [], borderColor: '#f97316', borderWidth: 2, borderDash: [6,4], fill: false, tension: 0, pointRadius: 0, yAxisID: 'yFlow' },
-        { label: 'Tank Fill (%)', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', borderWidth: 2, fill: true, tension: 0.35, pointRadius: 0, yAxisID: 'yFill' }
+        { label: 'Tank Fill (%)', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', borderWidth: 2, fill: true, tension: 0.35, pointRadius: 0, yAxisID: 'yFill' },
+        // LOSS: infiltration + evaporation rate actually leaving the tank
+        { label: 'Infiltration + Evaporation (m³/s)', data: [], borderColor: '#a16207', borderWidth: 2, borderDash: [2,3], fill: false, tension: 0.2, pointRadius: 0, yAxisID: 'yFlow', lossSeries: true, hidden: true }
       ]
     },
     options: {
@@ -498,7 +638,16 @@ function initChart() {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: 'index' },
-      plugins: { legend: { position: 'top', labels: { usePointStyle: true } } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            usePointStyle: true,
+            // hide the losses entry when infiltration/evaporation are off
+            filter: (item, data) => !(data.datasets[item.datasetIndex].lossSeries && !lossSeriesEnabled)
+          }
+        }
+      },
       scales: {
         x: { title: { display: true, text: 'Time (min)' }, ticks: { maxTicksLimit: 10 } },
         yFlow: { type: 'linear', position: 'left', min: 0, title: { display: true, text: 'Flow Rate (m³/s)' } },
@@ -508,9 +657,9 @@ function initChart() {
   });
 }
 
-function pushChartPoint(tMin, qIn, volume) {
+function pushChartPoint(tMin, qIn, volume, qLoss = 0, force = false) {
   const now = performance.now();
-  if (now - lastChartPush < 250) return;
+  if (!force && now - lastChartPush < 250) return;
   lastChartPush = now;
   if (chart.data.labels.length > 400) {
     chart.data.labels.shift();
@@ -521,6 +670,14 @@ function pushChartPoint(tMin, qIn, volume) {
   chart.data.datasets[0].data.push(qIn);
   chart.data.datasets[1].data.push(getQpump());
   chart.data.datasets[2].data.push(fill);
+  chart.data.datasets[3].data.push(qLoss);
+  chart.update('none');
+}
+
+function setLossSeriesEnabled(enabled) {
+  lossSeriesEnabled = enabled;
+  if (!chart) return;
+  chart.data.datasets[3].hidden = !enabled;
   chart.update('none');
 }
 
@@ -567,4 +724,158 @@ function setStatus(text, cls) {
   const badge = document.getElementById('status-badge');
   badge.textContent = text;
   badge.className = 'status-badge' + (cls ? ` ${cls}` : '');
+}
+
+// ===================== LOSS: infiltration + evaporation =====================
+//
+// Basin: rectangular base L × W (m), side slope z (H:1V, 0 = vertical walls).
+//   Stage–storage   V(h)  = L·W·h + (L+W)·z·h² + (4/3)·z²·h³
+//   Water surface   As(h) = (L + 2zh)(W + 2zh)            (= dV/dh)
+//   Wetted walls    Aw(h) = 2h·√(1+z²)·(L + W + 2zh)
+// Infiltration  Qinf  = f × Ainf(h)  — 'base': L·W ; 'all': L·W + Aw(h) ; 'none': 0
+// Evaporation   Qevap = e × As(h)
+// f and e are applied as constant rates (no head dependence).
+
+function getLossConfig() {
+  const mode = document.getElementById('inf-mode').value;          // 'none' | 'base' | 'all'
+  const infMmHr = getNum('inf-rate', 0);
+  const evapMmDay = getNum('evap-rate', 0);
+  const L = getNum('base-length', 0);
+  const W = getNum('base-width', 0);
+  const z = getNum('side-slope', 0);
+  const infRate = mode === 'none' ? 0 : infMmHr / 1000 / 3600;     // m/s
+  const evapRate = evapMmDay / 1000 / 86400;                       // m/s
+  const requested = infRate > 0 || evapRate > 0;
+  const geomOk = L > 0 && W > 0;
+  return {
+    mode, infRate, evapRate, L, W, z, requested, geomOk,
+    active: requested && geomOk,
+    evapDryOnly: document.getElementById('evap-dry-only').checked
+  };
+}
+
+function volumeAtStage(h, g) {
+  return g.L * g.W * h + (g.L + g.W) * g.z * h * h + (4 / 3) * g.z * g.z * h * h * h;
+}
+
+function surfaceAreaAtStage(h, g) {
+  return (g.L + 2 * g.z * h) * (g.W + 2 * g.z * h);
+}
+
+function wallAreaAtStage(h, g) {
+  return 2 * h * Math.sqrt(1 + g.z * g.z) * (g.L + g.W + 2 * g.z * h);
+}
+
+function infiltrationAreaAtStage(h, g) {
+  if (g.mode === 'none') return 0;
+  const base = g.L * g.W;
+  return g.mode === 'all' ? base + wallAreaAtStage(h, g) : base;
+}
+
+// Depth from volume. V(h) is increasing and convex, and v/(L·W) is an upper bound on h,
+// so Newton from there converges monotonically (usually 3–6 iterations).
+function stageFromVolume(v, g) {
+  if (v <= 0) return 0;
+  let h = v / (g.L * g.W);
+  for (let i = 0; i < 50; i++) {
+    const step = (volumeAtStage(h, g) - v) / surfaceAreaAtStage(h, g);
+    h -= step;
+    if (Math.abs(step) <= 1e-10 * (1 + h)) break;
+  }
+  return Math.max(0, h);
+}
+
+function lossRates(v, g, evapOn) {
+  const h = stageFromVolume(v, g);
+  return {
+    h,
+    inf: g.infRate * infiltrationAreaAtStage(h, g),
+    evap: evapOn ? g.evapRate * surfaceAreaAtStage(h, g) : 0
+  };
+}
+
+// Smallest outflow while any water is present (at h = 0). Outflows never decrease with depth.
+function minOutflowWithWater(pump, g) {
+  if (!g.active) return pump;
+  return pump + g.infRate * infiltrationAreaAtStage(0, g) + g.evapRate * surfaceAreaAtStage(0, g);
+}
+
+// Emptying time (hr) from volume vPeak after runoff ends (only direct inflow still arriving):
+//   t = ∫₀^hPeak As(h) / [Qpump + Qinf(h) + Qevap(h) − Qdirect] dh
+// Evaporation is included (drain-down is dry weather). No losses → vPeak / (pump − Qdirect).
+// Returns null with no outlet at all, Infinity if outflow can never exceed the direct inflow.
+function computeEmptyingHours(vPeak, pump, g, directQ = 0) {
+  if (vPeak <= 0) return 0;
+  if (pump === 0 && !g.active) return null;
+  if (minOutflowWithWater(pump, g) <= directQ) return Infinity;
+  if (!g.active) return vPeak / (pump - directQ) / 3600;
+  const hPeak = stageFromVolume(vPeak, g);
+  const n = 2000;
+  const dh = hPeak / n;
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    const h = (i + 0.5) * dh;
+    const area = surfaceAreaAtStage(h, g);
+    const q = pump + g.infRate * infiltrationAreaAtStage(h, g) + g.evapRate * area - directQ;
+    t += area / q * dh;   // q ≥ net outflow at h = 0 > 0, since outflows never decrease with depth
+  }
+  return t / 3600;
+}
+
+// Rainfall end: storm duration for Rational, 24 h for SCS Type II.
+function getRainfallEnd() {
+  return document.getElementById('method-select').value === 'scs'
+    ? 24 * 3600
+    : getNum('storm-duration', 60) * 60;
+}
+
+function resetLossTotals() {
+  cumInflow = 0;
+  cumPumped = 0;
+  cumInfiltrated = 0;
+  cumEvaporated = 0;
+}
+
+function setLossViz(g, evapOn) {
+  lossViz = { mode: g.active ? g.mode : 'none', evapOn: g.active && evapOn, active: g.active, g };
+}
+
+function bindLossControls() {
+  ['inf-mode', 'inf-rate', 'evap-rate', 'evap-dry-only', 'base-length', 'base-width', 'side-slope', 'vmax']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', refreshLossControls);
+      el.addEventListener('change', refreshLossControls);
+    });
+}
+
+// Enables only the fields that matter, and reports the basin geometry at full capacity.
+function refreshLossControls() {
+  const g = getLossConfig();
+  const evapOn = g.evapRate > 0;
+  const needGeom = g.mode !== 'none' || evapOn;
+  document.getElementById('inf-rate').disabled = g.mode === 'none';
+  document.getElementById('evap-dry-only').disabled = !evapOn;
+  ['base-length', 'base-width', 'side-slope'].forEach(id => {
+    document.getElementById(id).disabled = !needGeom;
+  });
+
+  const note = document.getElementById('geom-note');
+  if (!needGeom) {
+    note.textContent = 'Geometry is used only when infiltration or evaporation is on.';
+  } else if (!g.geomOk) {
+    note.textContent = '⚠ Enter a base length and width greater than 0.';
+  } else {
+    const vMax = getVmax();
+    const hFull = stageFromVolume(vMax, g);
+    const r = v => Math.round(v).toLocaleString();
+    const infArea = g.mode === 'none' ? 'none' : `${r(infiltrationAreaAtStage(hFull, g))} m²`;
+    note.textContent = `At ${r(vMax)} m³: depth ${hFull.toFixed(2)} m, water surface ${r(surfaceAreaAtStage(hFull, g))} m², infiltrating area ${infArea}.`;
+  }
+
+  if (!simRunning) {
+    setLossViz(g, evapOn);
+    setLossSeriesEnabled(g.active);
+    updateTankViz(getVmax() > 0 ? tankVolume / getVmax() : 0);
+  }
 }

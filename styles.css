@@ -208,7 +208,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 .speed-group label { display: flex; flex-direction: row; align-items: center; gap: 4px; color: var(--text); font-weight: 800; cursor: pointer; }
 .speed-group input { margin: 0; }
 
-.sim-dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.sim-dashboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 14px; }
 .metric-card {
   background: linear-gradient(180deg, #ffffff, #f2fbff);
   border: 1px solid var(--border);
@@ -239,6 +239,39 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 }
 .result-strip span { display: block; color: #bae6fd; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
 .result-strip strong { display: block; font-size: 20px; margin-top: 6px; }
+
+/* LOSS: storage losses card */
+.loss-card { margin-bottom: 18px; }
+.loss-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.loss-subhead { margin: 18px 0 10px; color: #075985; font-size: 13px; font-weight: 900; }
+.geom-note { align-self: stretch; display: flex; align-items: center; }
+.check-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1.5px solid #b9d2e8;
+  border-radius: 14px;
+  background: var(--white);
+  cursor: pointer;
+}
+.check-label input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--blue); }
+.check-label:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+.check-label:has(input:focus-visible) { border-color: var(--blue); box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.16); }
+
+.mass-balance {
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #eef7fd;
+  border: 1px solid var(--border);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+.mass-balance.bad { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+.tank-depth { margin: 2px 0 0; font-size: 12px; font-weight: 900; color: #7c4a1e; }
 
 .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .status-badge { padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 900; background: #e5e7eb; color: #374151; }
@@ -278,7 +311,7 @@ footer strong { color: #8b0000; font-weight: 950; background: white; border-radi
 
 @media (max-width: 980px) {
   .hero-inner, .method-controls, .sim-viz { grid-template-columns: 1fr; }
-  .sim-dashboard { grid-template-columns: repeat(2, 1fr); }
+  .sim-dashboard { grid-template-columns: repeat(3, 1fr); }
   .hero-panel { display: none; }
 }
 @media (max-width: 640px) {

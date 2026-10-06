@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Dynamic storm retention tank simulator with Rational and SCS Curve Number synthetic storm methods." />
+  <meta name="description" content="Dynamic storm retention tank simulator with Rational and SCS Curve Number synthetic storm methods, infiltration and evaporation losses." />
   <meta name="author" content="A. ElHawary" />
   <meta name="theme-color" content="#071b33" />
   <title>Storm Retention Tank Simulator</title>
@@ -32,6 +32,7 @@
         <span>Factored Storage</span>
         <span>Direct Inflow</span>
         <span>Overflow Tracking</span>
+        <span>Infiltration &amp; Evaporation</span>
         <span>Peak Flow &amp; Time</span>
       </div>
     </div>
@@ -162,6 +163,50 @@
       </label>
     </div>
 
+    <!-- LOSS: storage losses — infiltration (sealed / base only / base + walls) and open-water evaporation -->
+    <div class="control-card loss-card" id="loss-controls">
+      <h3>Storage Losses — Infiltration &amp; Evaporation</h3>
+      <div class="param-grid loss-grid">
+        <label>
+          Infiltration
+          <select id="inf-mode">
+            <option value="none" selected>None — sealed tank</option>
+            <option value="base">Base only — lined walls</option>
+            <option value="all">Base + walls — earthen basin</option>
+          </select>
+        </label>
+        <label>
+          Infiltration Rate (mm/hr)
+          <input id="inf-rate" type="number" step="1" min="0" value="10" disabled />
+        </label>
+        <label>
+          Evaporation Rate (mm/day)
+          <input id="evap-rate" type="number" step="0.5" min="0" value="0" />
+        </label>
+        <label class="check-label">
+          <input id="evap-dry-only" type="checkbox" disabled />
+          <span>Evaporate only after rainfall ends</span>
+        </label>
+      </div>
+      <h4 class="loss-subhead">Basin geometry — sets wetted and water-surface areas</h4>
+      <div class="param-grid loss-grid">
+        <label>
+          Base Length (m)
+          <input id="base-length" type="number" step="1" min="1" value="80" disabled />
+        </label>
+        <label>
+          Base Width (m)
+          <input id="base-width" type="number" step="1" min="1" value="60" disabled />
+        </label>
+        <label>
+          Side Slope (H:1V)
+          <input id="side-slope" type="number" step="0.5" min="0" value="0" disabled />
+        </label>
+        <div class="method-note geom-note" id="geom-note">Geometry is used only when infiltration or evaporation is on.</div>
+      </div>
+      <div class="method-note" style="margin-top: 14px;">Use a design infiltration rate (tested rate ÷ factor of safety). Side slope 0 = vertical walls. Full depth is solved from Tank Capacity and the base geometry. Set evaporation to 0 for covered or buried tanks; for open basins use pan evaporation × pan coefficient.</div>
+    </div>
+
     <div class="playback" role="group" aria-label="Simulation controls">
       <button id="play-btn" type="button" class="btn-play">▶ Start</button>
       <button id="pause-btn" type="button" class="btn-pause" disabled>⏸ Pause</button>
@@ -187,6 +232,11 @@
         <div class="metric-label">Excess Flow</div>
         <div class="metric-value" id="m-excess">0.00</div>
         <div class="metric-unit">m³/s</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Infiltration + Evap</div>
+        <div class="metric-value" id="m-loss">0.0</div>
+        <div class="metric-unit">L/s</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Tank Volume</div>
@@ -215,10 +265,14 @@
       <div><span>Max Factored Volume</span><strong id="factored-volume">— m³</strong></div>
       <div><span>Emptying Time</span><strong id="empty-time">—</strong></div>
       <div><span>Overflow Volume</span><strong id="spill-volume">— m³</strong></div>
+      <div><span>Infiltrated Volume</span><strong id="inf-volume">— m³</strong></div>
+      <div><span>Evaporated Volume</span><strong id="evap-volume">— m³</strong></div>
       <div><span>Peak Inflow</span><strong id="peak-inflow-res">—</strong></div>
       <div><span>Peak Inflow Time</span><strong id="peak-time-res">—</strong></div>
       <div><span>Tank Check</span><strong id="tank-check">Ready</strong></div>
     </div>
+
+    <p class="mass-balance" id="mass-balance">Run the simulation to see the volume balance.</p>
 
     <div class="status-row" aria-live="polite" role="status">
       <span class="status-badge" id="status-badge">Idle — press Start to begin</span>
@@ -237,6 +291,11 @@
               <stop id="wg-bot" offset="100%" stop-color="#0369a1" stop-opacity="0.97" />
             </linearGradient>
             <clipPath id="tank-clip"><rect x="14" y="20" width="172" height="290" rx="10" /></clipPath>
+            <pattern id="soil-pat" patternUnits="userSpaceOnUse" width="6" height="6">
+              <rect width="6" height="6" fill="#d9b98c" />
+              <circle cx="1.5" cy="1.5" r="0.9" fill="#8b5e34" />
+              <circle cx="4.5" cy="4.2" r="0.7" fill="#a47148" />
+            </pattern>
             <pattern id="warn-stripe" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(45)">
               <rect width="7" height="14" fill="#fbbf24" opacity="0.35" />
             </pattern>
@@ -247,15 +306,38 @@
           <line x1="14" y1="49" x2="186" y2="49" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="5 3" />
           <text x="183" y="46" text-anchor="end" font-size="8" fill="#ef4444" font-weight="700">90%</text>
           <rect id="warn-overlay" x="14" y="20" width="172" height="60" rx="10" fill="url(#warn-stripe)" opacity="0" />
+          <!-- LOSS: soil cues — shown when the base / walls infiltrate -->
+          <rect id="soil-wall-l" x="3" y="20" width="9.5" height="292" rx="3" fill="url(#soil-pat)" display="none" />
+          <rect id="soil-wall-r" x="187.5" y="20" width="9.5" height="292" rx="3" fill="url(#soil-pat)" display="none" />
+          <rect id="soil-base" x="3" y="311.5" width="194" height="10" rx="3" fill="url(#soil-pat)" display="none" />
+          <g id="inf-wall-arrows" stroke="#7c4a1e" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path data-y="285" d="M12 285 H2 M5 282 L2 285 L5 288 M188 285 H198 M195 282 L198 285 L195 288" display="none" />
+            <path data-y="240" d="M12 240 H2 M5 237 L2 240 L5 243 M188 240 H198 M195 237 L198 240 L195 243" display="none" />
+            <path data-y="195" d="M12 195 H2 M5 192 L2 195 L5 198 M188 195 H198 M195 192 L198 195 L195 198" display="none" />
+            <path data-y="150" d="M12 150 H2 M5 147 L2 150 L5 153 M188 150 H198 M195 147 L198 150 L195 153" display="none" />
+            <path data-y="105" d="M12 105 H2 M5 102 L2 105 L5 108 M188 105 H198 M195 102 L198 105 L195 108" display="none" />
+            <path data-y="60" d="M12 60 H2 M5 57 L2 60 L5 63 M188 60 H198 M195 57 L198 60 L195 63" display="none" />
+          </g>
           <rect id="water-body" x="14" y="310" width="172" height="0" fill="url(#water-grad)" clip-path="url(#tank-clip)" />
           <text id="tank-pct" x="100" y="172" text-anchor="middle" dominant-baseline="middle" font-size="36" font-weight="900" fill="#071b33">0%</text>
           <text id="tank-status" x="100" y="205" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#0369a1">Empty</text>
+          <g id="inf-base-arrows" stroke="#7c4a1e" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" display="none">
+            <path d="M28 323 V338 M24 334 L28 338 L32 334" />
+            <path d="M48 323 V338 M44 334 L48 338 L52 334" />
+            <path d="M152 323 V338 M148 334 L152 338 L156 334" />
+            <path d="M172 323 V338 M168 334 L172 338 L176 334" />
+          </g>
+          <g id="evap-arrows" stroke="#f59e0b" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" display="none">
+            <path d="M42 -3 q -4 -5 0 -9 q 4 -5 0 -10 M38 -18 L42 -22 L46 -18" />
+            <path d="M158 -3 q -4 -5 0 -9 q 4 -5 0 -10 M154 -18 L158 -22 L162 -18" />
+          </g>
           <rect x="68" y="310" width="64" height="24" rx="6" fill="#0ea5e9" />
           <text x="100" y="326" text-anchor="middle" font-size="9" font-weight="700" fill="white">PUMP</text>
           <rect x="84" y="334" width="32" height="16" rx="4" fill="#071b33" />
           <text x="100" y="345" text-anchor="middle" font-size="8" fill="white" font-weight="700">OUT</text>
         </svg>
         <p class="tank-caption">Retention Tank</p>
+        <p class="tank-depth" id="tank-depth" hidden></p>
       </div>
     </div>
   </section>
@@ -266,8 +348,12 @@
     <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a simplified triangular hydrograph (Tp = storm duration / 2). Select intensity i from your local IDF curve at the duration equal to the system's Time of Concentration and your target return period (e.g. 10-year, 100-year).</p>
     <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph. The user inputs <em>Tc</em> (Time of Concentration); the model internally derives <em>Tp</em> (Time to Peak) as Tp = (Δt/2) + 0.6 × Tc. Tc max is 360 min for a 24-hour storm.</p>
     <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation, including after the storm ends until the tank fully drains. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
+    <p><strong>Infiltration:</strong> loss rate Q<sub>inf</sub> = f × A<sub>inf</sub>(h), where f is the design infiltration rate (mm/hr) and h is the current water depth. <em>None</em> models a sealed tank. <em>Base only</em> (lined walls, earth floor) uses the base area L × W whenever water is present. <em>Base + walls</em> (fully earthen basin) adds the wetted side area 2h√(1+z²)(L + W + 2zh), so losses grow as the basin fills. A constant rate is applied during and after the storm (no head dependence). Enter a design value, i.e. the tested rate divided by an appropriate factor of safety for clogging and uncertainty.</p>
+    <p><strong>Evaporation:</strong> loss rate Q<sub>evap</sub> = e × A<sub>s</sub>(h), with e the open-water evaporation (mm/day) and A<sub>s</sub> = (L + 2zh)(W + 2zh) the water surface area. Optionally applied only after rainfall ends (storm duration for Rational, 24 h for SCS). Set e = 0 for covered or buried tanks.</p>
+    <p><strong>Basin geometry:</strong> a rectangular base L × W with side slope z (H:1V) gives the stage–storage relation V(h) = LWh + (L + W)zh² + (4/3)z²h³. Water depth is solved from the stored volume each step, and the full depth is solved from Tank Capacity.</p>
     <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor. This is the required tank design size.</p>
-    <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) at pump rate. Use this to verify inter-storm recovery.</p>
+    <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) by the pump plus any infiltration and evaporation, net of any direct inflow still arriving, from the drawdown integral t = ∫ A<sub>s</sub>(h) / [Q<sub>pump</sub> + Q<sub>inf</sub>(h) + Q<sub>evap</sub>(h) − Q<sub>direct</sub>] dh between 0 and the peak depth. With no losses this reduces to peak volume ÷ (pump rate − direct inflow). "Won't drain" means the outflow cannot exceed the direct inflow. Use this to verify inter-storm recovery. With no pump, the animated drain-out stops 72 h after runoff ends, but Emptying Time is still calculated in full.</p>
+    <p><strong>Volume balance:</strong> total inflow = pumped + infiltrated + evaporated + overflow + volume still stored. The closure error is reported below the results as a check on the routing.</p>
     <p><strong>Peak Inflow &amp; Peak Time:</strong> maximum total inflow rate reached during the simulation and the clock time at which it occurred. Includes both storm runoff and direct inflow.</p>
     <p><strong>Overflow Volume:</strong> total volume lost when the tank exceeded capacity. A non-zero value means the tank is undersized or the pump is too slow.</p>
     <p><strong>Best storage duration:</strong> the critical duration is the one producing the highest max factored volume while emptying time remains acceptable.</p>
@@ -286,6 +372,9 @@
       <span>Overflow volume tracked</span>
       <span>SCS fixed at 24 hours</span>
       <span>Pump cut-off at empty tank</span>
+      <span>Infiltration: base only or base + walls</span>
+      <span>Evaporation from water surface</span>
+      <span>Volume balance closure</span>
     </div>
   </section>
 </main>
