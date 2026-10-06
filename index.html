@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Dynamic storm retention tank simulator with Rational and SCS Curve Number synthetic storm methods, infiltration and evaporation losses." />
+  <meta name="description" content="Dynamic storm retention tank simulator with Rational, SCS Curve Number and constant-flow inflow methods, infiltration and evaporation losses." />
   <meta name="author" content="A. ElHawary" />
   <meta name="theme-color" content="#071b33" />
   <title>Storm Retention Tank Simulator</title>
@@ -25,10 +25,10 @@
     <div class="hero-copy">
       <span class="hero-kicker">Synthetic Storm Design Tool</span>
       <h1>Storm Retention Tank Simulator</h1>
-      <p>Dynamic storage simulation using either Rational Method peak flow or SCS Curve Number runoff from a Type II 24-hour storm.</p>
+      <p>Dynamic storage simulation using Rational Method peak flow, SCS Curve Number runoff from a Type II 24-hour storm, or a constant inflow.</p>
       <!-- FIX7: hero badges updated to reflect all current features -->
       <div class="hero-badges" aria-label="Main design features">
-        <span>Rational / SCS</span>
+        <span>Rational / SCS / Constant</span>
         <span>Factored Storage</span>
         <span>Direct Inflow</span>
         <span>Overflow Tracking</span>
@@ -61,6 +61,7 @@
           <select id="method-select">
             <option value="rational" selected>Rational Method</option>
             <option value="scs">SCS Curve Number Method</option>
+            <option value="constant">Constant Flow</option>
           </select>
         </label>
         <div class="method-note" id="method-note">Rational uses rainfall intensity and runoff coefficient C.</div>
@@ -129,6 +130,28 @@
           </label>
         </div>
         <div class="method-note" style="margin-top: 14px;">Tc is the Time of Concentration. NRCS derives Time to Peak as Tp = (Δt/2) + 0.6 × Tc — a longer Tc gives a later, flatter peak. Direct Inflow represents a constant forcemain or external discharge added throughout the storm.</div>
+      </div>
+
+      <!-- CONST: constant-flow method — steady Q for the storm duration (rectangular hydrograph) -->
+      <div class="control-card inactive constant-card" id="constant-controls">
+        <h3>Constant Flow Inputs</h3>
+        <div class="param-grid two-col">
+          <label class="slider-label">
+            Constant Inflow Q (L/sec)
+            <div class="slider-row">
+              <input id="const-flow" type="range" min="0" max="20000" value="1000" step="50" disabled />
+              <input id="const-flow-val" class="value-pill" type="number" min="0" max="20000" step="50" value="1000" aria-label="Constant inflow value" disabled />
+            </div>
+          </label>
+          <label class="slider-label">
+            Direct Inflow (L/sec)
+            <div class="slider-row">
+              <input id="direct-inflow-c" type="range" min="0" max="500" value="0" step="10" disabled />
+              <input id="direct-inflow-c-val" class="value-pill" type="number" min="0" max="500" step="10" value="0" aria-label="Direct inflow value constant flow" disabled />
+            </div>
+          </label>
+        </div>
+        <div class="method-note" style="margin-top: 14px;">Q enters at a steady rate for the selected Storm Duration, then stops. Catchment area is not used. Direct Inflow, if set, keeps running after Q stops until the tank drains.</div>
       </div>
     </div>
 
@@ -347,6 +370,7 @@
     <h2 id="concept-heading">Calculation Concept</h2>
     <p><strong>Rational mode:</strong> peak flow is calculated from Q = C × i × A / 360, then distributed using a simplified triangular hydrograph (Tp = storm duration / 2). Select intensity i from your local IDF curve at the duration equal to the system's Time of Concentration and your target return period (e.g. 10-year, 100-year).</p>
     <p><strong>SCS mode:</strong> 24-hour Type II cumulative rainfall is scaled to the input storm depth, converted to CN runoff, then routed through an NRCS dimensionless unit hydrograph. The user inputs <em>Tc</em> (Time of Concentration); the model internally derives <em>Tp</em> (Time to Peak) as Tp = (Δt/2) + 0.6 × Tc. Tc max is 360 min for a 24-hour storm.</p>
+    <p><strong>Constant Flow mode:</strong> a steady inflow Q (L/sec) for the selected storm duration, then zero (rectangular hydrograph), so the inflow volume is exactly Q × duration. Use it for a known design flow such as an upstream pump station, a pipe running full, or a fixed discharge. Catchment area is not used. For evaporation, "after rainfall ends" means after Q stops.</p>
     <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation, including after the storm ends until the tank fully drains. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
     <p><strong>Infiltration:</strong> loss rate Q<sub>inf</sub> = f × A<sub>inf</sub>(h), where f is the design infiltration rate (mm/hr) and h is the current water depth. <em>None</em> models a sealed tank. <em>Base only</em> (lined walls, earth floor) uses the base area L × W whenever water is present. <em>Base + walls</em> (fully earthen basin) adds the wetted side area 2h√(1+z²)(L + W + 2zh), so losses grow as the basin fills. A constant rate is applied during and after the storm (no head dependence). Enter a design value, i.e. the tested rate divided by an appropriate factor of safety for clogging and uncertainty.</p>
     <p><strong>Evaporation:</strong> loss rate Q<sub>evap</sub> = e × A<sub>s</sub>(h), with e the open-water evaporation (mm/day) and A<sub>s</sub> = (L + 2zh)(W + 2zh) the water surface area. Optionally applied only after rainfall ends (storm duration for Rational, 24 h for SCS). Set e = 0 for covered or buried tanks.</p>
@@ -371,6 +395,7 @@
       <span>Emptying time (actual volume)</span>
       <span>Overflow volume tracked</span>
       <span>SCS fixed at 24 hours</span>
+      <span>Constant inflow method</span>
       <span>Pump cut-off at empty tank</span>
       <span>Infiltration: base only or base + walls</span>
       <span>Evaporation from water surface</span>

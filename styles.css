@@ -175,6 +175,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 }
 .method-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
 .control-card { margin: 0; }
+.constant-card { grid-column: 1 / -1; }  /* CONST: third method card spans the full row */
 .control-card h3 { margin: 0 0 12px; color: var(--navy); font-size: 15px; }
 .control-card.inactive {
   opacity: 0.55;

@@ -16,6 +16,14 @@ let simSpeed = 300;
 let lastChartPush = 0;
 let lastResultUpdate = 0;  // FIX3: throttle updateResultStrip
 let hasRun = false;
+let hydrographKind = 'rational';  // CONST: method the current hydrograph was built with
+let currentMethod = 'rational';   // CONST: method shown in the UI (for duration handling)
+
+const METHOD_INFO = {
+  rational: { label: 'Rational Method',  note: 'Rational uses rainfall intensity and runoff coefficient C.' },
+  scs:      { label: 'SCS Curve Number', note: 'SCS uses storm depth and Curve Number CN.' },
+  constant: { label: 'Constant Flow',    note: 'Constant Flow applies a steady inflow Q for the storm duration.' }
+};
 
 // LOSS: cumulative volumes for the volume balance (m³)
 let cumInflow = 0;
@@ -64,6 +72,8 @@ function bindLinkedInputs() {
   linkRangeAndPill('tc', 'tc-val', 10, 360, 0);  // Tc capped at 360 min for 24h storm
   linkRangeAndPill('direct-inflow-r', 'direct-inflow-r-val', 0, 500, 0);
   linkRangeAndPill('direct-inflow-s', 'direct-inflow-s-val', 0, 500, 0);
+  linkRangeAndPill('const-flow', 'const-flow-val', 0, 20000, 0);
+  linkRangeAndPill('direct-inflow-c', 'direct-inflow-c-val', 0, 500, 0);
 }
 
 function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
@@ -81,23 +91,26 @@ function linkRangeAndPill(rangeId, inputId, min, max, decimals) {
 }
 
 function setMethodMode(mode) {
-  const isScs = mode === 'scs';
-  document.getElementById('method-label').textContent = isScs ? 'SCS Curve Number' : 'Rational Method';
-  document.getElementById('method-note').textContent = isScs
-    ? 'SCS uses storm depth and Curve Number CN.'
-    : 'Rational uses rainfall intensity and runoff coefficient C.';
+  const info = METHOD_INFO[mode] || METHOD_INFO.rational;
+  document.getElementById('method-label').textContent = info.label;
+  document.getElementById('method-note').textContent = info.note;
 
-  setControlGroupEnabled('rational-controls', !isScs);
-  setControlGroupEnabled('scs-controls', isScs);
+  setControlGroupEnabled('rational-controls', mode === 'rational');
+  setControlGroupEnabled('scs-controls', mode === 'scs');
+  setControlGroupEnabled('constant-controls', mode === 'constant');
+  document.getElementById('area').disabled = mode === 'constant';  // not used by Constant Flow
 
   const duration = document.getElementById('storm-duration');
-  if (isScs) {
+  if (mode === 'scs') {
     duration.value = '1440';
     duration.disabled = true;
   } else {
     duration.disabled = false;
-    if (duration.value === '1440') duration.value = '60';
+    // Rational: as before, 24 h falls back to 1 hour. Constant Flow may use 24 h, but not the
+    // 24 h that SCS forced on the way in.
+    if (duration.value === '1440' && (mode === 'rational' || currentMethod === 'scs')) duration.value = '60';
   }
+  currentMethod = mode;
 
   resetSim();
 }
@@ -125,7 +138,7 @@ function startSim() {
   // Fresh start — validate inputs first
   const areaHa = getNum('area', 50);
   const vmax = getVmax();
-  if (areaHa <= 0) { setStatus('⚠ Catchment area must be greater than 0.', 'warning'); return; }
+  if (areaHa <= 0 && getMethod() !== 'constant') { setStatus('⚠ Catchment area must be greater than 0.', 'warning'); return; }
   if (vmax <= 0)   { setStatus('⚠ Tank capacity must be greater than 0.', 'warning'); return; }
   const loss = getLossConfig();
   if (loss.requested && !loss.geomOk) {
@@ -204,7 +217,8 @@ function tick(ts) {
 
   const directQ = getDirectInflow();
   const hydrographEnd = hydrograph[hydrograph.length - 1]?.t ?? 0;
-  const isScs = document.getElementById('method-select').value === 'scs';
+  const isScs = getMethod() === 'scs';
+  const isConstant = hydrographKind === 'constant';
   const pump = getQpump();
   const vMax = getVmax();
   const loss = getLossConfig();           // read live, like the pump rate
@@ -220,9 +234,12 @@ function tick(ts) {
   // Sub-step: cap each integration step at Tp/200 so the triangular peak is always
   // well-resolved regardless of speed or storm duration.
   // 30-min storm → tp=900s → substep≤4.5s; 1-hr → tp=1800s → substep≤9s.
-  const tpTime = hydrograph.length > 1
-    ? hydrograph.reduce((best, p) => p.Q > best.Q ? p : best, hydrograph[0]).t
-    : 300;
+  // CONST: a flat block has no peak time, so resolve it at duration/400 instead.
+  const tpTime = isConstant
+    ? hydrographEnd / 2
+    : hydrograph.length > 1
+      ? hydrograph.reduce((best, p) => p.Q > best.Q ? p : best, hydrograph[0]).t
+      : 300;
   const MAX_SUBSTEP = Math.max(1, tpTime / 200);
   const nSteps = Math.ceil(totalSimDelta / MAX_SUBSTEP);
   const subDelta = totalSimDelta / nSteps;
@@ -231,9 +248,14 @@ function tick(ts) {
   let qLoss = 0;
 
   for (let s = 0; s < nSteps; s++) {
+    const t0 = simTime;
     simTime += subDelta;
 
-    const stormOver = simTime >= hydrographEnd;
+    // CONST: Constant Flow stops abruptly at the end of the duration, so the sub-step that
+    // straddles it must still be applied (judge by the step's start). Rational/SCS hydrographs
+    // are already zero at their end, so they keep the original step-end test.
+    const tCheck = isConstant ? t0 : simTime;
+    const stormOver = tCheck >= hydrographEnd;
 
     // 1) Drained: runoff finished and storage empty. Direct inflow (if any) is passing straight
     //    through the outlet at this point, so the tank stays empty.
@@ -244,7 +266,7 @@ function tick(ts) {
     }
 
     // 2) Hard stop (no outlet, or passive drain-out cap).
-    if (simTime >= hardStop) {
+    if (tCheck >= hardStop) {
       simTime = hardStop;
       finishRun(0, noOutlet
         ? (tankVolume > 0 ? 'Simulation complete — tank holding (no outlet)' : 'Simulation complete')
@@ -260,7 +282,7 @@ function tick(ts) {
       return;
     }
 
-    const stormQ = stormOver ? 0 : interpolateFlow(simTime);
+    const stormQ = stormFlowOverStep(t0, simTime);
     qIn = stormQ + directQ;
 
     // Mass-limited outflows: pump, infiltration and evaporation can only remove water that is
@@ -303,7 +325,7 @@ function tick(ts) {
 
     if (qIn > peakInflow) {
       peakInflow = qIn;
-      peakInflowTime = simTime;
+      peakInflowTime = isConstant ? t0 : simTime;  // a constant block peaks from its start
     }
   }
 
@@ -351,9 +373,34 @@ function endSim(message = 'Simulation complete') {
 }
 
 function buildHydrograph() {
-  return document.getElementById('method-select').value === 'scs'
-    ? buildScsHydrograph()
-    : buildRationalHydrograph();
+  hydrographKind = getMethod();
+  if (hydrographKind === 'scs') return buildScsHydrograph();
+  if (hydrographKind === 'constant') return buildConstantHydrograph();
+  return buildRationalHydrograph();
+}
+
+function getMethod() {
+  return document.getElementById('method-select').value;
+}
+
+// CONST: rectangular hydrograph — Q (L/sec) from t = 0 to the storm duration, zero after.
+function buildConstantHydrograph() {
+  const q = getNum('const-flow-val', 0) / 1000;           // m³/s
+  const durationSec = getNum('storm-duration', 60) * 60;
+  return [{ t: 0, Q: q }, { t: durationSec, Q: q }];
+}
+
+// Storm runoff used for the sub-step [t0, t1].
+// Constant Flow: exact average of the block over the step, so the inflow volume is exactly
+// Q × duration even when a step straddles the end. Rational/SCS: flow at t1, as before
+// (interpolateFlow returns 0 once the hydrograph has ended).
+function stormFlowOverStep(t0, t1) {
+  if (hydrographKind === 'constant') {
+    const end = hydrograph[hydrograph.length - 1]?.t ?? 0;
+    const overlap = Math.max(0, Math.min(t1, end) - Math.max(t0, 0));
+    return t1 > t0 ? (hydrograph[0]?.Q ?? 0) * overlap / (t1 - t0) : 0;
+  }
+  return interpolateFlow(t1);
 }
 
 // Rational Method uses a simplified symmetric triangular hydrograph.
@@ -713,11 +760,9 @@ function getVmax()  { return getNum('vmax', 15000); }
 
 // Direct Inflow: constant forcemain/external discharge (m³/s) added throughout simulation.
 function getDirectInflow() {
-  const isScs = document.getElementById('method-select').value === 'scs';
-  const lps = isScs
-    ? getNum('direct-inflow-s-val', 0)
-    : getNum('direct-inflow-r-val', 0);
-  return lps / 1000;
+  const id = { rational: 'direct-inflow-r-val', scs: 'direct-inflow-s-val', constant: 'direct-inflow-c-val' }[getMethod()]
+    || 'direct-inflow-r-val';
+  return getNum(id, 0) / 1000;
 }
 
 function setStatus(text, cls) {
@@ -822,9 +867,9 @@ function computeEmptyingHours(vPeak, pump, g, directQ = 0) {
   return t / 3600;
 }
 
-// Rainfall end: storm duration for Rational, 24 h for SCS Type II.
+// Rainfall end: storm duration for Rational and Constant Flow (when Q stops), 24 h for SCS Type II.
 function getRainfallEnd() {
-  return document.getElementById('method-select').value === 'scs'
+  return getMethod() === 'scs'
     ? 24 * 3600
     : getNum('storm-duration', 60) * 60;
 }
