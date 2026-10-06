@@ -244,8 +244,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shado
 /* LOSS: storage losses card */
 .loss-card { margin-bottom: 18px; }
 .loss-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.loss-subhead { margin: 18px 0 10px; color: #075985; font-size: 13px; font-weight: 900; }
-.geom-note { align-self: stretch; display: flex; align-items: center; }
 .check-label {
   flex-direction: row;
   align-items: center;

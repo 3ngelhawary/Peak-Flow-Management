@@ -177,22 +177,69 @@
         <input id="qpump-lps" type="number" step="10" min="0" value="200" />
       </label>
       <label>
-        Tank Capacity (m³)
-        <input id="vmax" type="number" step="500" min="100" value="15000" />
-      </label>
-      <label>
         Safety Factor
         <input id="safety-factor" type="number" step="0.05" min="1" value="1.15" />
       </label>
     </div>
 
-    <!-- LOSS: storage losses — infiltration (sealed / base only / base + walls) and open-water evaporation -->
-    <div class="control-card loss-card" id="loss-controls">
+    <!-- STORE: storage is defined by Tank Capacity OR Basin Geometry — only one is active -->
+    <div class="param-panel">
+      <div class="param-grid two-col">
+        <label>
+          Storage Defined By
+          <select id="storage-mode">
+            <option value="capacity" selected>Tank Capacity</option>
+            <option value="geometry">Basin Geometry</option>
+          </select>
+        </label>
+        <div class="method-note" id="storage-note">Tank Capacity sets the storage volume directly.</div>
+      </div>
+    </div>
+
+    <div class="method-controls">
+      <div class="control-card" id="capacity-controls">
+        <h3>Tank Capacity</h3>
+        <div class="param-grid">
+          <label>
+            Tank Capacity (m³)
+            <input id="vmax" type="number" step="500" min="100" value="15000" />
+          </label>
+        </div>
+        <div class="method-note" style="margin-top: 14px;">A sealed volume with no infiltration or evaporation. Choose Basin Geometry to model them.</div>
+      </div>
+
+      <div class="control-card inactive" id="geometry-controls">
+        <h3>Basin Geometry</h3>
+        <div class="param-grid two-col">
+          <label>
+            Base Length (m)
+            <input id="base-length" type="number" step="1" min="1" value="100" disabled />
+          </label>
+          <label>
+            Base Width (m)
+            <input id="base-width" type="number" step="1" min="1" value="50" disabled />
+          </label>
+          <label>
+            Side Slope (H:1V)
+            <input id="side-slope" type="number" step="0.5" min="0" value="0" disabled />
+          </label>
+          <label>
+            Max Water Depth (m)
+            <input id="basin-depth" type="number" step="0.1" min="0.1" value="3" disabled />
+          </label>
+        </div>
+        <div class="method-note" id="geom-note" style="margin-top: 14px;">Capacity is calculated from the base, side slope and depth.</div>
+      </div>
+    </div>
+
+    <!-- LOSS: storage losses — infiltration (sealed / base only / base + walls) and open-water evaporation.
+         Needs wetted and surface areas, so it is active only with Basin Geometry. -->
+    <div class="control-card loss-card inactive" id="loss-controls">
       <h3>Storage Losses — Infiltration &amp; Evaporation</h3>
       <div class="param-grid loss-grid">
         <label>
           Infiltration
-          <select id="inf-mode">
+          <select id="inf-mode" disabled>
             <option value="none" selected>None — sealed tank</option>
             <option value="base">Base only — lined walls</option>
             <option value="all">Base + walls — earthen basin</option>
@@ -204,30 +251,14 @@
         </label>
         <label>
           Evaporation Rate (mm/day)
-          <input id="evap-rate" type="number" step="0.5" min="0" value="0" />
+          <input id="evap-rate" type="number" step="0.5" min="0" value="0" disabled />
         </label>
         <label class="check-label">
           <input id="evap-dry-only" type="checkbox" disabled />
           <span>Evaporate only after rainfall ends</span>
         </label>
       </div>
-      <h4 class="loss-subhead">Basin geometry — sets wetted and water-surface areas</h4>
-      <div class="param-grid loss-grid">
-        <label>
-          Base Length (m)
-          <input id="base-length" type="number" step="1" min="1" value="80" disabled />
-        </label>
-        <label>
-          Base Width (m)
-          <input id="base-width" type="number" step="1" min="1" value="60" disabled />
-        </label>
-        <label>
-          Side Slope (H:1V)
-          <input id="side-slope" type="number" step="0.5" min="0" value="0" disabled />
-        </label>
-        <div class="method-note geom-note" id="geom-note">Geometry is used only when infiltration or evaporation is on.</div>
-      </div>
-      <div class="method-note" style="margin-top: 14px;">Use a design infiltration rate (tested rate ÷ factor of safety). Side slope 0 = vertical walls. Full depth is solved from Tank Capacity and the base geometry. Set evaporation to 0 for covered or buried tanks; for open basins use pan evaporation × pan coefficient.</div>
+      <div class="method-note" id="loss-note" style="margin-top: 14px;">Available with Basin Geometry. Use a design infiltration rate (tested rate ÷ factor of safety). Set evaporation to 0 for covered or buried tanks; for open basins use pan evaporation × pan coefficient.</div>
     </div>
 
     <div class="playback" role="group" aria-label="Simulation controls">
@@ -374,7 +405,7 @@
     <p><strong>Direct Inflow:</strong> a constant flow (L/sec) added to the storm hydrograph throughout the entire simulation, including after the storm ends until the tank fully drains. Use this to represent a forcemain, pump station discharge, or any external pipe disposing into the network at a fixed rate regardless of rainfall.</p>
     <p><strong>Infiltration:</strong> loss rate Q<sub>inf</sub> = f × A<sub>inf</sub>(h), where f is the design infiltration rate (mm/hr) and h is the current water depth. <em>None</em> models a sealed tank. <em>Base only</em> (lined walls, earth floor) uses the base area L × W whenever water is present. <em>Base + walls</em> (fully earthen basin) adds the wetted side area 2h√(1+z²)(L + W + 2zh), so losses grow as the basin fills. A constant rate is applied during and after the storm (no head dependence). Enter a design value, i.e. the tested rate divided by an appropriate factor of safety for clogging and uncertainty.</p>
     <p><strong>Evaporation:</strong> loss rate Q<sub>evap</sub> = e × A<sub>s</sub>(h), with e the open-water evaporation (mm/day) and A<sub>s</sub> = (L + 2zh)(W + 2zh) the water surface area. Optionally applied only after rainfall ends (storm duration for Rational, 24 h for SCS). Set e = 0 for covered or buried tanks.</p>
-    <p><strong>Basin geometry:</strong> a rectangular base L × W with side slope z (H:1V) gives the stage–storage relation V(h) = LWh + (L + W)zh² + (4/3)z²h³. Water depth is solved from the stored volume each step, and the full depth is solved from Tank Capacity.</p>
+    <p><strong>Storage definition:</strong> choose one. <em>Tank Capacity</em> sets the volume directly and models a sealed tank, so infiltration and evaporation are off. <em>Basin Geometry</em> uses a rectangular base L × W, side slope z (H:1V) and max water depth D, giving the stage–storage relation V(h) = LWh + (L + W)zh² + (4/3)z²h³ and a capacity of V(D). Water depth is solved from the stored volume each step. Infiltration and evaporation need these areas, so they are available only with Basin Geometry.</p>
     <p><strong>Max Factored Volume:</strong> maximum storage reached during simulation × safety factor. This is the required tank design size.</p>
     <p><strong>Emptying Time:</strong> time to drain the actual peak volume (unfactored) by the pump plus any infiltration and evaporation, net of any direct inflow still arriving, from the drawdown integral t = ∫ A<sub>s</sub>(h) / [Q<sub>pump</sub> + Q<sub>inf</sub>(h) + Q<sub>evap</sub>(h) − Q<sub>direct</sub>] dh between 0 and the peak depth. With no losses this reduces to peak volume ÷ (pump rate − direct inflow). "Won't drain" means the outflow cannot exceed the direct inflow. Use this to verify inter-storm recovery. With no pump, the animated drain-out stops 72 h after runoff ends, but Emptying Time is still calculated in full.</p>
     <p><strong>Volume balance:</strong> total inflow = pumped + infiltrated + evaporated + overflow + volume still stored. The closure error is reported below the results as a check on the routing.</p>
@@ -400,6 +431,7 @@
       <span>Infiltration: base only or base + walls</span>
       <span>Evaporation from water surface</span>
       <span>Volume balance closure</span>
+      <span>Storage by capacity or basin geometry</span>
     </div>
   </section>
 </main>

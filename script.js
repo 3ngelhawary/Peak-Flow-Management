@@ -139,7 +139,12 @@ function startSim() {
   const areaHa = getNum('area', 50);
   const vmax = getVmax();
   if (areaHa <= 0 && getMethod() !== 'constant') { setStatus('⚠ Catchment area must be greater than 0.', 'warning'); return; }
-  if (vmax <= 0)   { setStatus('⚠ Tank capacity must be greater than 0.', 'warning'); return; }
+  if (vmax <= 0) {
+    setStatus(getStorageMode() === 'geometry'
+      ? '⚠ Basin geometry needs base length, base width and depth greater than 0.'
+      : '⚠ Tank capacity must be greater than 0.', 'warning');
+    return;
+  }
   const loss = getLossConfig();
   if (loss.requested && !loss.geomOk) {
     setStatus('⚠ Infiltration/evaporation needs a base length and width greater than 0.', 'warning');
@@ -200,7 +205,7 @@ function resetSim() {
   document.getElementById('play-btn').disabled = false;
   document.getElementById('pause-btn').disabled = true;
   updateDashboard(0, 0, 0);
-  refreshLossControls();
+  refreshStorageControls();
   updateTankViz(0);
   updateResultStrip(true);
   resetChart();
@@ -655,10 +660,10 @@ function updateLossViz(f, waterTopY) {
   evap.setAttribute('transform', `translate(0 ${Math.max(waterTopY, 28)})`);
 
   const depthEl = document.getElementById('tank-depth');
-  if (active && g) {
-    const hFull = stageFromVolume(getVmax(), g);
-    const h = stageFromVolume(f * getVmax(), g);
-    depthEl.textContent = `Water depth ${h.toFixed(2)} m of ${hFull.toFixed(2)} m`;
+  const geo = getGeometry();
+  if (getStorageMode() === 'geometry' && geo.ok) {
+    const h = stageFromVolume(f * getVmax(), geo);
+    depthEl.textContent = `Water depth ${h.toFixed(2)} m of ${geo.depth.toFixed(2)} m`;
     depthEl.hidden = false;
   } else {
     depthEl.hidden = true;
@@ -756,7 +761,26 @@ function getNum(id, fallback) {
 }
 
 function getQpump() { return getNum('qpump-lps', 200) / 1000; }
-function getVmax()  { return getNum('vmax', 15000); }
+// STORE: capacity comes from the Tank Capacity input or from the basin geometry, never both.
+function getVmax() {
+  if (getStorageMode() === 'geometry') {
+    const g = getGeometry();
+    return g.ok ? volumeAtStage(g.depth, g) : 0;
+  }
+  return getNum('vmax', 15000);
+}
+
+function getStorageMode() {
+  return document.getElementById('storage-mode').value;   // 'capacity' | 'geometry'
+}
+
+function getGeometry() {
+  const L = getNum('base-length', 0);
+  const W = getNum('base-width', 0);
+  const z = getNum('side-slope', 0);
+  const depth = getNum('basin-depth', 0);
+  return { L, W, z, depth, ok: L > 0 && W > 0 && depth > 0 };
+}
 
 // Direct Inflow: constant forcemain/external discharge (m³/s) added throughout simulation.
 function getDirectInflow() {
@@ -782,16 +806,15 @@ function setStatus(text, cls) {
 // f and e are applied as constant rates (no head dependence).
 
 function getLossConfig() {
-  const mode = document.getElementById('inf-mode').value;          // 'none' | 'base' | 'all'
+  // STORE: losses need wetted/surface areas, so they only exist when storage is a basin geometry.
+  const geomMode = getStorageMode() === 'geometry';
+  const { L, W, z, ok: geomOk } = getGeometry();
+  const mode = geomMode ? document.getElementById('inf-mode').value : 'none';   // 'none' | 'base' | 'all'
   const infMmHr = getNum('inf-rate', 0);
-  const evapMmDay = getNum('evap-rate', 0);
-  const L = getNum('base-length', 0);
-  const W = getNum('base-width', 0);
-  const z = getNum('side-slope', 0);
+  const evapMmDay = geomMode ? getNum('evap-rate', 0) : 0;
   const infRate = mode === 'none' ? 0 : infMmHr / 1000 / 3600;     // m/s
   const evapRate = evapMmDay / 1000 / 86400;                       // m/s
   const requested = infRate > 0 || evapRate > 0;
-  const geomOk = L > 0 && W > 0;
   return {
     mode, infRate, evapRate, L, W, z, requested, geomOk,
     active: requested && geomOk,
@@ -886,41 +909,55 @@ function setLossViz(g, evapOn) {
 }
 
 function bindLossControls() {
-  ['inf-mode', 'inf-rate', 'evap-rate', 'evap-dry-only', 'base-length', 'base-width', 'side-slope', 'vmax']
+  ['inf-mode', 'inf-rate', 'evap-rate', 'evap-dry-only', 'base-length', 'base-width', 'side-slope', 'basin-depth', 'vmax']
     .forEach(id => {
       const el = document.getElementById(id);
-      el.addEventListener('input', refreshLossControls);
-      el.addEventListener('change', refreshLossControls);
+      el.addEventListener('input', refreshStorageControls);
+      el.addEventListener('change', refreshStorageControls);
     });
+  // Switching how storage is defined changes the tank itself, so start over (like a method change).
+  document.getElementById('storage-mode').addEventListener('change', resetSim);
 }
 
-// Enables only the fields that matter, and reports the basin geometry at full capacity.
-function refreshLossControls() {
+// STORE: exactly one of Tank Capacity / Basin Geometry is active; losses follow Basin Geometry.
+function refreshStorageControls() {
+  const geomMode = getStorageMode() === 'geometry';
+  setControlGroupEnabled('capacity-controls', !geomMode);
+  setControlGroupEnabled('geometry-controls', geomMode);
+  setControlGroupEnabled('loss-controls', geomMode);
+
   const g = getLossConfig();
   const evapOn = g.evapRate > 0;
-  const needGeom = g.mode !== 'none' || evapOn;
-  document.getElementById('inf-rate').disabled = g.mode === 'none';
-  document.getElementById('evap-dry-only').disabled = !evapOn;
-  ['base-length', 'base-width', 'side-slope'].forEach(id => {
-    document.getElementById(id).disabled = !needGeom;
-  });
+  if (geomMode) {
+    document.getElementById('inf-rate').disabled = g.mode === 'none';
+    document.getElementById('evap-dry-only').disabled = !evapOn;
+  }
+
+  document.getElementById('loss-note').textContent = (geomMode ? '' : 'Available with Basin Geometry. ')
+    + 'Use a design infiltration rate (tested rate ÷ factor of safety). Set evaporation to 0 for covered or buried tanks; '
+    + 'for open basins use pan evaporation × pan coefficient.';
+
+  document.getElementById('storage-note').textContent = geomMode
+    ? 'Basin Geometry sets base, side slope and depth; capacity is calculated. Infiltration and evaporation are available.'
+    : 'Tank Capacity sets the storage volume directly. Infiltration and evaporation are off.';
 
   const note = document.getElementById('geom-note');
-  if (!needGeom) {
-    note.textContent = 'Geometry is used only when infiltration or evaporation is on.';
+  if (!geomMode) {
+    note.textContent = 'Capacity is calculated from the base, side slope and depth.';
   } else if (!g.geomOk) {
-    note.textContent = '⚠ Enter a base length and width greater than 0.';
+    note.textContent = '⚠ Enter base length, base width and depth greater than 0.';
   } else {
-    const vMax = getVmax();
-    const hFull = stageFromVolume(vMax, g);
+    const geo = getGeometry();
     const r = v => Math.round(v).toLocaleString();
-    const infArea = g.mode === 'none' ? 'none' : `${r(infiltrationAreaAtStage(hFull, g))} m²`;
-    note.textContent = `At ${r(vMax)} m³: depth ${hFull.toFixed(2)} m, water surface ${r(surfaceAreaAtStage(hFull, g))} m², infiltrating area ${infArea}.`;
+    const inf = g.mode === 'none' ? ''
+      : ` Infiltrating area at full depth ${r(infiltrationAreaAtStage(geo.depth, g))} m² (${g.mode === 'all' ? 'base + walls' : 'base only'}).`;
+    note.textContent = `Capacity ${r(volumeAtStage(geo.depth, geo))} m³. Water surface at full depth ${r(surfaceAreaAtStage(geo.depth, geo))} m².${inf}`;
   }
 
   if (!simRunning) {
     setLossViz(g, evapOn);
     setLossSeriesEnabled(g.active);
-    updateTankViz(getVmax() > 0 ? tankVolume / getVmax() : 0);
+    const vMax = getVmax();
+    updateTankViz(vMax > 0 ? tankVolume / vMax : 0);
   }
 }
